@@ -1,155 +1,338 @@
-/* --- GLOBAL LAYOUT (Dashboard Background) --- */
+
+/* =========================================
+   1. GLOBAL RESET & BASICS
+   ========================================= */
 body {
   margin: 0;
-  font-family: 'Inter', 'Segoe UI', 'Roboto', sans-serif;
-  background-color: #f1f5f9; /* Soft ERP Blue-Grey Background */
-  color: #334155; /* Slate color text, softer than pure black */
-  font-size: 13px; /* Compact font size */
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: #f1f5f9; /* Light ERP Grey */
+  color: #0f172a; /* Dark Text */
+  -webkit-font-smoothing: antialiased;
 }
 
+* {
+  box-sizing: border-box;
+}
+
+/* =========================================
+   2. PAGE LAYOUT
+   ========================================= */
 .page-container {
+  padding: 30px;
   max-width: 1200px;
-  margin: 30px auto;
-  padding: 0 20px;
+  margin: 0 auto;
 }
 
-/* --- HEADER AREA --- */
 .header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 25px;
 }
 
-.header-row h2 {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
+/* =========================================
+   3. BUTTONS & INPUTS
+   ========================================= */
+.btn {
+  padding: 10px 16px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  transition: opacity 0.2s;
 }
+.btn:hover { opacity: 0.9; }
+
+.btn-primary { background-color: #3b82f6; color: white; }
+.btn-success { background-color: #10b981; color: white; }
+.btn-danger  { background-color: #ef4444; color: white; }
 
 .search-bar {
-  padding: 8px 16px;
-  width: 280px;
+  padding: 10px 15px;
   border: 1px solid #cbd5e1;
-  border-radius: 20px; /* Fully rounded pill shape */
-  font-size: 13px;
+  border-radius: 6px;
+  width: 300px;
   outline: none;
-  background: white;
-  transition: all 0.2s;
 }
-.search-bar:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
 
-/* --- THE TABLE CARD (The White Box) --- */
+/* =========================================
+   4. DATA TABLES
+   ========================================= */
 .table-card {
   background: white;
-  border-radius: 16px; /* High rounded corners like screenshot */
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  overflow: hidden; /* Clips the corners */
-  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  overflow: hidden; /* Rounds the corners of the table */
 }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 800px;
+  font-size: 14px;
 }
 
-/* --- TABLE HEADER --- */
 .data-table th {
   background: #f8fafc;
-  color: #64748b; /* Muted text */
+  color: #64748b;
   font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 16px; /* More breathable padding */
   text-align: left;
+  padding: 12px 20px;
   border-bottom: 1px solid #e2e8f0;
-}
-
-/* --- TABLE ROWS --- */
-.data-table td {
-  padding: 12px 16px; /* Compact vertical padding */
-  vertical-align: middle;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 13px;
-  color: #334155;
-}
-
-/* Zebra Striping & Hover - Like the screenshot */
-.data-table tbody tr:nth-child(even) { background-color: #fafbfc; }
-.data-table tbody tr:hover { background-color: #f0f9ff; cursor: default; }
-
-/* --- BADGES & ICONS --- */
-.status-badge {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 12px;
-  font-size: 10px;
-  font-weight: 700;
   text-transform: uppercase;
-  color: white;
+  font-size: 11px;
   letter-spacing: 0.5px;
 }
 
-.icon-action { 
-  cursor: pointer; 
-  font-size: 14px; 
-  margin: 0 6px; 
-  color: #94a3b8; 
-  transition: color 0.2s;
+.data-table td {
+  padding: 12px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  vertical-align: middle;
 }
-.icon-action:hover { color: #3b82f6; }
 
-/* --- BUTTONS --- */
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px; /* Slightly rounded */
+.data-table tr:hover {
+  background-color: #f8fafc;
+}
+
+/* Badges (e.g. Active, Shipper) */
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: bold;
+  display: inline-block;
+}
+
+/* Action Icons (Edit/Delete) */
+.icon-action {
   cursor: pointer;
-  font-weight: 600;
-  font-size: 12px;
-  color: white;
+  margin: 0 5px;
+  font-size: 16px;
+  opacity: 0.7;
   transition: opacity 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
-.btn:hover { opacity: 0.9; }
-.btn-primary { background-color: #0f172a; /* Dark Navy like screenshot sidebar */ }
-.btn-success { background-color: #10b981; }
-.btn-close { background: none; color: #64748b; font-size: 18px; padding: 0; }
+.icon-action:hover { opacity: 1; transform: scale(1.1); }
 
-/* --- LINKS --- */
-.link-action { color: #3b82f6; font-weight: 600; cursor: pointer; text-decoration: none; font-size: 12px; }
-.link-success { color: #10b981; font-weight: 600; cursor: pointer; text-decoration: none; font-size: 12px; }
+/* =========================================
+   5. FORMS
+   ========================================= */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* 2 Columns by default */
+  gap: 15px;
+  margin-bottom: 15px;
+}
 
-/* --- MODALS (Clean Popup) --- */
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 5px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+}
+.form-input:focus { border-color: #3b82f6; }
+
+/* =========================================
+   6. CLASSIC MODAL WINDOW (The Fix)
+   ========================================= */
 .modal-overlay {
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(15, 23, 42, 0.4); /* Dark blue tinted overlay */
-  backdrop-filter: blur(2px);
-  display: flex; justify-content: center; align-items: center; z-index: 1000;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  
+  /* Simple dark dimming - High contrast */
+  background: rgba(0, 0, 0, 0.5); 
+  
+  display: flex;
+  justify-content: center;
+  align-items: center; /* Centers vertically */
+  z-index: 2000;       /* Sits above Sidebar */
+  padding: 20px;       /* Safety padding for small screens */
 }
+
 .modal-content {
-  background: white; padding: 24px; border-radius: 16px;
-  width: 550px; max-width: 90%; max-height: 85vh; overflow-y: auto;
+  background: white;
+  width: 600px;
+  max-width: 100%;
+  
+  /* Limits height to 85% of screen so "Save" button is never cut off */
+  max-height: 85vh; 
+  display: flex;
+  flex-direction: column;
+  
+  border-radius: 8px;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
-.modal-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 15px;
-}
-.modal-header h3 { margin: 0; font-size: 18px; color: #1e293b; }
 
-/* --- FORMS --- */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
-.form-label { display: block; font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 4px; text-transform: uppercase; }
-.form-input {
-  padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px;
-  width: 100%; box-sizing: border-box; font-size: 13px; color: #334155;
-  transition: border 0.2s;
+.modal-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  
+  /* Rounds only top corners */
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
 }
-.form-input:focus { border-color: #3b82f6; outline: none; }
-.admin-panel { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px dashed #cbd5e1; margin-bottom: 20px; }
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #1e293b;
+}
+
+/* Close "X" Button */
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #94a3b8;
+  cursor: pointer;
+}
+.btn-close:hover { color: #ef4444; }
+
+/* The Scrollable Body */
+.modal-content form {
+  overflow-y: auto; /* Scrollbar appears here if form is long */
+  padding: 20px;
+}
+/* --- COMPLIANCE BADGES & TOOLTIPS --- */
+
+/* The Red/Yellow Warning Badge */
+.badge-warning {
+  background-color: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: help; /* Shows '?' cursor on hover */
+  display: inline-block;
+}
+
+/* Tooltip Container (Needed for positioning) */
+.tooltip-container {
+  position: relative;
+  display: inline-block;
+}
+
+/* The Popup Box (Hidden by default) */
+.tooltip-text {
+  visibility: hidden;
+  width: 200px;
+  background-color: #1e293b; /* Dark Navy */
+  color: #fff;
+  text-align: left;
+  border-radius: 6px;
+  padding: 10px;
+  position: absolute;
+  z-index: 10;
+  bottom: 125%; /* Shows above the badge */
+  left: 50%;
+  margin-left: -100px; /* Center it */
+  opacity: 0;
+  transition: opacity 0.3s;
+  
+  /* Font Styling */
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+/* The Arrow pointing down */
+.tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #1e293b transparent transparent transparent;
+}
+
+/* Show Tooltip on Hover */
+.tooltip-container:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+/* --- RED NOTIFICATION DOT SYSTEM --- */
+
+.notification-dot {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #ef4444; /* Bright Red */
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  height: 18px;
+  min-width: 18px; /* Ensures circle shape even with 1 digit */
+  padding: 0 4px;
+  border-radius: 10px; /* Pill shape for 2 digits, circle for 1 */
+  margin-left: 8px;    /* Space between Name and Dot */
+  cursor: help;
+  position: relative;  /* Anchor for the tooltip */
+  vertical-align: middle;
+}
+
+/* The Popup Box (Hidden by default) */
+.tooltip-text {
+  visibility: hidden;
+  width: 180px;
+  background-color: #1e293b; /* Dark Navy Background */
+  color: #fff;
+  text-align: left;
+  border-radius: 4px;
+  padding: 8px 10px;
+  
+  /* Positioning */
+  position: absolute;
+  z-index: 100;
+  bottom: 125%; /* Sits above the dot */
+  left: 50%;
+  transform: translateX(-50%); /* Centers it */
+  
+  /* Animation */
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 1.4;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  white-space: normal; /* Allows text wrapping */
+}
+
+/* Tiny arrow pointing down from tooltip */
+.tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #1e293b transparent transparent transparent;
+}
+
+/* Show on Hover */
+.notification-dot:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
