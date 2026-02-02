@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 
@@ -6,7 +7,6 @@ export default function DocumentManager({ relatedType, relatedId }) {
   const [uploading, setUploading] = useState(false)
   const [newDoc, setNewDoc] = useState({ doc_type: 'Other', notes: '', file: null })
 
-  // 1. WRAP FUNCTION IN useCallback TO FIX WARNING
   const fetchDocs = useCallback(async () => {
     if (!relatedId) return
 
@@ -18,36 +18,31 @@ export default function DocumentManager({ relatedType, relatedId }) {
       .order('created_at', { ascending: false })
     
     setDocs(data || [])
-  }, [relatedId, relatedType]) // Depend on these values
+  }, [relatedId, relatedType])
 
-  // 2. NOW INCLUDE fetchDocs IN THE DEPENDENCY ARRAY
   useEffect(() => {
     fetchDocs()
   }, [fetchDocs])
 
-  // --- HANDLE FILE UPLOAD ---
   const handleUpload = async (e) => {
     e.preventDefault()
     if (!newDoc.file) return alert("Please select a file first!")
     
     setUploading(true)
     try {
-      // Clean filename
       const fileExt = newDoc.file.name.split('.').pop()
-      const fileName = `${relatedType}-${relatedId}-${newDoc.doc_type}-${Date.now()}.${fileExt}`.replace(/\s+/g, '-') // Replace spaces
+      // Create a clean filename: "Driver-123-Passport-167888.jpg"
+      const fileName = `${relatedType}-${relatedId}-${newDoc.doc_type}-${Date.now()}.${fileExt}`.replace(/\s+/g, '-') 
       const filePath = `${fileName}`
 
-      // Upload
       const { error: uploadError } = await supabase.storage
         .from('fleet-docs')
         .upload(filePath, newDoc.file)
 
       if (uploadError) throw uploadError
 
-      // Get URL
       const { data: { publicUrl } } = supabase.storage.from('fleet-docs').getPublicUrl(filePath)
 
-      // Save to DB
       await supabase.from('fleet_documents').insert([{
         related_type: relatedType,
         related_id: relatedId,
@@ -57,7 +52,7 @@ export default function DocumentManager({ relatedType, relatedId }) {
       }])
 
       setNewDoc({ doc_type: 'Other', notes: '', file: null })
-      fetchDocs() // Refresh list
+      fetchDocs() 
 
     } catch (error) {
       alert("Upload Failed: " + error.message)
@@ -90,7 +85,8 @@ export default function DocumentManager({ relatedType, relatedId }) {
                 <option>Driving License</option>
                 <option>Passport</option>
                 <option>Visa</option>
-                <option>Emirates ID</option>
+                <option>Residence ID</option> {/* Updated Name */}
+                <option>Driver Photo</option> {/* Added Option */}
                 <option>Vehicle Photo</option>
                 <option>Damage Report</option>
                 <option>Other</option>
@@ -119,7 +115,6 @@ export default function DocumentManager({ relatedType, relatedId }) {
       <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))', gap:'10px'}}>
         {docs.map(doc => (
             <div key={doc.id} style={{background:'white', padding:'8px', borderRadius:'6px', border:'1px solid #e2e8f0', textAlign:'center'}}>
-                {/* PREVIEW THUMBNAIL */}
                 <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
                     {doc.file_url.toLowerCase().endsWith('.pdf') 
                         ? <div style={{height:'60px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'30px', background:'#f1f5f9', borderRadius:'4px'}}>📄</div>

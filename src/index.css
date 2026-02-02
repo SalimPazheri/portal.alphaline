@@ -336,3 +336,93 @@ body {
   visibility: visible;
   opacity: 1;
 }
+/* --- UPDATED MODAL STYLES (Sticky Footer) --- */
+
+.modal-content {
+  background: white;
+  width: 800px;         /* Default width */
+  max-width: 95%;
+  max-height: 90vh;     /* Maximum height */
+  
+  display: flex;        /* Flexbox allows us to split header/body/footer */
+  flex-direction: column;
+  
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  position: relative;
+}
+
+.modal-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  flex-shrink: 0;       /* Header never shrinks */
+}
+
+/* THE SCROLLING PART */
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;     /* Only this part scrolls */
+  flex-grow: 1;         /* Takes up all available space */
+}
+
+/* THE STICKY BOTTOM BAR */
+.modal-footer {
+  padding: 15px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end; /* Aligns buttons to the right */
+  gap: 10px;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  flex-shrink: 0;       /* Footer never shrinks */
+}
+/* --- TRAFFIC LIGHT COMPLIANCE DOTS --- */
+
+.notification-dot {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 10px;
+  font-weight: bold;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 10px;
+  margin-left: 8px;
+  cursor: help;
+  position: relative;
+  vertical-align: middle;
+  color: white; /* Default text color */
+}
+
+/* 🔴 CRITICAL (Red) */
+.notification-dot.red {
+  background-color: #ef4444; 
+  box-shadow: 0 0 0 1px #b91c1c; /* Subtle border */
+}
+
+/* 🟡 WARNING (Yellow) */
+.notification-dot.yellow {
+  background-color: #f59e0b; 
+  color: #fff; /* White text looks better on dark yellow */
+  box-shadow: 0 0 0 1px #b45309;
+}
+
+/* 🟢 PERFECT (Green) */
+.notification-dot.green {
+  background-color: #10b981; 
+  box-shadow: 0 0 0 1px #047857;
+}
+
+/* Tooltip Logic (Same as before, ensures it stays on top) */
+.notification-dot:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
