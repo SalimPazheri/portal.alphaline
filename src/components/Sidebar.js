@@ -114,8 +114,14 @@ export default function Sidebar() {
         <Link to="/agents" style={isActive('/agents') ? activeLinkStyle : linkStyle}>
           👤 Agents / Drivers
         </Link>
+        
         <Link to="/drivers" style={isActive('/drivers') ? activeLinkStyle : linkStyle}>
+        
   🧢 Drivers
+  
+</Link>
+<Link to="/settings" className="nav-item">
+  ⚙️ Settings
 </Link>
         {/* SECTION: COMMERCIAL (Coming Soon) */}
         <div style={sectionLabelStyle}>COMMERCIAL</div>

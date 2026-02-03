@@ -1,96 +1,72 @@
-import React from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import Drivers from './pages/Drivers'
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-// Import Global Styles
-import './index.css'
+// 1. STYLES
+import './index.css'; 
 
-// Import Layout Components
-import Sidebar from './components/Sidebar'
+// 2. CONTEXT
+import { ConfirmProvider } from './context/ConfirmContext';
 
-// Import All Application Pages
-import Customers from './pages/Customers'
-import Users from './pages/Users'
-import LogisticsParties from './pages/LogisticsParties'
-import Trucks from './pages/Trucks'
-import Commodities from './pages/Commodities'
-import Equipment from './pages/Equipment'
-import Agents from './pages/Agents'
+// 3. COMPONENTS
+import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
 
-// --- DASHBOARD COMPONENT (Placeholder) ---
-// We will build a real "Analytics Dashboard" here later.
-const Dashboard = () => (
-  <div className="page-container">
-    <h2 style={{margin:0}}>📊 Executive Dashboard</h2>
-    <p style={{color:'#64748b', fontSize:'14px'}}>Welcome to your ERP System.</p>
-    
-    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'20px', marginTop:'20px'}}>
-      <div style={cardStyle}>
-        <h3 style={cardLabel}>Total Customers</h3>
-        <p style={cardValue}>1,240</p>
-      </div>
-      <div style={cardStyle}>
-        <h3 style={cardLabel}>Active Trucks</h3>
-        <p style={cardValue}>18</p>
-      </div>
-      <div style={cardStyle}>
-        <h3 style={cardLabel}>Pending Invoices</h3>
-        <p style={cardValue}>AED 45k</p>
-      </div>
-      <div style={cardStyle}>
-        <h3 style={cardLabel}>Open Jobs</h3>
-        <p style={cardValue}>12</p>
-      </div>
-    </div>
-  </div>
-)
+// 4. PAGES
+import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
+import Customers from './pages/Customers';
+import Trucks from './pages/Trucks';
+import Drivers from './pages/Drivers';
+import Equipment from './pages/Equipment';
+import Agents from './pages/Agents';
+import Commodities from './pages/Commodities';
+import LogisticsParties from './pages/LogisticsParties';
+import Settings from './pages/Settings';
 
-// Simple Styles for the Dashboard Cards
-const cardStyle = {
-  background:'white', padding:'20px', borderRadius:'10px', border:'1px solid #e2e8f0', boxShadow:'0 1px 3px rgba(0,0,0,0.05)'
-}
-const cardLabel = { margin:0, color:'#64748b', fontSize:'13px', textTransform:'uppercase', letterSpacing:'0.5px' }
-const cardValue = { fontSize:'28px', fontWeight:'bold', margin:'10px 0 0 0', color:'#0f172a' }
-
-
-// --- MAIN APP COMPONENT ---
 function App() {
   return (
-    <Router>
-      <div style={{ display: 'flex' }}>
-        
-        {/* 1. LEFT SIDEBAR (Fixed Navigation) */}
-        <Sidebar />
-
-        {/* 2. RIGHT CONTENT AREA (Dynamic Pages) */}
-        <div style={{ 
-          marginLeft: '260px', // Matches Sidebar Width
-          width: 'calc(100% - 260px)', 
-          minHeight: '100vh',
-          background: '#f1f5f9' // Light Grey ERP Background
-        }}>
+    <ConfirmProvider>
+      <Router>
+        <div className="flex h-screen bg-gray-100 overflow-hidden">
           
-          <Routes>
-            {/* Dashboard (Home) */}
-            <Route path="/" element={<Dashboard />} />
+          {/* SIDEBAR (Fixed Left) */}
+          <Sidebar />
+
+          {/* MAIN CONTENT AREA */}
+          {/* Added 'ml-64' to push content to the right of the sidebar */}
+          <div className="flex-1 flex flex-col min-w-0" style={{ marginLeft: '260px' }}>
             
-            {/* Master Data Modules */}
-            <Route path="/customers" element={<Customers />} />
-            <Route path="/users" element={<Users />} />
-            <Route path="/logistics-parties" element={<LogisticsParties />} />
-            <Route path="/commodities" element={<Commodities />} />
+            {/* TOP BAR */}
+            <TopBar />
 
-            {/* Fleet & Assets Modules */}
-            <Route path="/trucks" element={<Trucks />} />
-            <Route path="/equipment" element={<Equipment />} />
-            <Route path="/agents" element={<Agents />} />
-            <Route path="/drivers" element={<Drivers />} />
-          </Routes>
+            {/* SCROLLABLE PAGE CONTENT */}
+            <main className="flex-1 overflow-y-auto p-6">
+              <Routes>
+                
+                {/* DEFAULT REDIRECT */}
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                
+                {/* LOGIN */}
+                <Route path="/login" element={<Login />} />
 
+                {/* APP MODULES */}
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/customers" element={<Customers />} />
+                <Route path="/trucks" element={<Trucks />} />
+                <Route path="/drivers" element={<Drivers />} />
+                <Route path="/equipment" element={<Equipment />} />
+                <Route path="/agents" element={<Agents />} />
+                <Route path="/commodities" element={<Commodities />} />
+                <Route path="/logistics-parties" element={<LogisticsParties />} />
+                <Route path="/settings" element={<Settings />} />
+
+              </Routes>
+            </main>
+          </div>
         </div>
-      </div>
-    </Router>
-  )
+      </Router>
+    </ConfirmProvider>
+  );
 }
 
-export default App
+export default App;

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import DocumentManager from '../components/DocumentManager'
 
@@ -21,16 +22,20 @@ export default function Trucks() {
   const [form, setForm] = useState(initialForm)
   const truckMakes = ["Mercedes-Benz", "Volvo", "Scania", "MAN", "Renault", "DAF", "Iveco", "Hino", "Isuzu", "Mitsubishi Fuso", "Tata", "Sinotruk", "Other"]
 
-  useEffect(() => { fetchItems(); fetchCountries() }, [])
-
-  const fetchItems = async (search = '') => {
+  // --- FIX: Wrap fetchItems in useCallback ---
+  const fetchItems = useCallback(async (search = '') => {
     try {
       let query = supabase.from('fleet_trucks').select('*').eq('is_deleted', false).order('created_at', { ascending: false })
-      if (search) query = query.ilike('reg_no', `%${search}%`)
+      
+      // Safe search check
+      if (search && typeof search === 'string') {
+          query = query.ilike('reg_no', `%${search}%`)
+      }
+
       const { data: trucks, error } = await query
       if (error) throw error
 
-      if (trucks.length > 0) {
+      if (trucks && trucks.length > 0) {
         const truckIds = trucks.map(t => t.id)
         const { data: docs } = await supabase
           .from('fleet_documents')
@@ -50,7 +55,7 @@ export default function Trucks() {
             const hasInsDoc = myDocs.some(d => d.doc_type.includes('Insurance'))
             if (!hasInsDoc) truck.issues.push("Missing Insurance Copy")
 
-            // NEW: Mandatory Photo Check
+            // Photo is Mandatory for Trucks
             const hasPhoto = myDocs.some(d => d.doc_type.includes('Vehicle Photo') || d.doc_type.includes('Truck Photo'))
             if (!hasPhoto) truck.issues.push("Missing Truck Photo")
 
@@ -78,7 +83,13 @@ export default function Trucks() {
       }
       setItems(trucks || [])
     } catch (e) { console.error(e) }
-  }
+  }, [])
+
+  // --- FIX: Add fetchItems to dependency array ---
+  useEffect(() => { 
+      fetchItems()
+      fetchCountries() 
+  }, [fetchItems])
 
   const fetchCountries = async () => {
     const { data } = await supabase.from('master_countries').select('*').order('name')
@@ -224,7 +235,25 @@ export default function Trucks() {
                     <div><span className="form-label">Ins. Policy</span><input value={form.insurance_policy_no} onChange={e => setForm({...form, insurance_policy_no: e.target.value})} className="form-input" /></div>
                     <div><span className="form-label">Ins. Expiry</span><input type="date" value={form.insurance_expiry_date||''} onChange={e => setForm({...form, insurance_expiry_date: e.target.value})} className="form-input" /></div>
                     <div><span className="form-label">Payload (Tons)</span><input value={form.payload_capacity} onChange={e => setForm({...form, payload_capacity: e.target.value})} className="form-input" /></div>
-                    {form.truck_type !== 'Own Asset' && <div style={{gridColumn:'span 2'}}><span className="form-label">Owner Name</span><input value={form.owner_name} onChange={e => setForm({...form, owner_name: e.target.value})} className="form-input" /></div>}
+                    
+                    {/* --- OWNER FIELDS (Only if NOT 'Own Asset') --- */}
+                    {form.truck_type !== 'Own Asset' && (
+                        <>
+                            <div style={{gridColumn:'span 2', background:'#f8fafc', padding:'10px', borderRadius:'6px', border:'1px solid #e2e8f0', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+                                <div style={{gridColumn:'span 2', fontSize:'12px', fontWeight:'bold', color:'#334155'}}>Owner Details</div>
+                                <div>
+                                    <span className="form-label">Registered Owner Name</span>
+                                    <input value={form.owner_name} onChange={e => setForm({...form, owner_name: e.target.value})} className="form-input" placeholder="Company or Person Name" />
+                                </div>
+                                <div>
+                                    <span className="form-label">Owner Mobile</span>
+                                    <input value={form.owner_mobile} onChange={e => setForm({...form, owner_mobile: e.target.value})} className="form-input" placeholder="+971..." />
+                                </div>
+                            </div>
+                        </>
+                    )}
+                    {/* --------------------------------------------- */}
+
                   </div>
               </form>
 
