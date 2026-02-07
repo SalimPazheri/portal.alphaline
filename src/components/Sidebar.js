@@ -1,140 +1,78 @@
-import { Link, useLocation } from 'react-router-dom'
+import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { 
+  LayoutDashboard, 
+  Truck, 
+  Container, 
+  Users, 
+  Settings, 
+  Box, 
+  Briefcase, 
+  Map, 
+  UserCircle 
+} from 'lucide-react';
 
-// --- STYLES ---
-const sidebarStyle = {
-  width: '260px',
-  height: '100vh',
-  background: '#0f172a', // Dark Navy
-  color: 'white',
-  display: 'flex',
-  flexDirection: 'column',
-  padding: '20px',
-  boxSizing: 'border-box',
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  zIndex: 1000
-}
-
-const brandStyle = {
-  marginBottom: '30px',
-  paddingBottom: '20px',
-  borderBottom: '1px solid #1e293b'
-}
-
-const sectionLabelStyle = {
-  color: '#64748b',
-  fontWeight: 'bold',
-  fontSize: '11px',
-  marginTop: '25px', // More space before sections
-  marginBottom: '10px',
-  paddingLeft: '10px',
-  letterSpacing: '1px'
-}
-
-const linkStyle = {
-  textDecoration: 'none',
-  color: '#cbd5e1', // Light grey
-  padding: '8px 15px',
-  borderRadius: '6px',
-  fontSize: '14px',
-  display: 'block',
-  marginBottom: '4px',
-  transition: 'background 0.2s',
-  cursor: 'pointer'
-}
-
-const activeLinkStyle = {
-  ...linkStyle,
-  background: '#3b82f6', // Bright Blue
-  color: 'white',
-  fontWeight: '600'
-}
-
-const linkStyleDisabled = {
-  ...linkStyle,
-  color: '#475569',
-  cursor: 'not-allowed'
-}
-
-const footerStyle = {
-  marginTop: 'auto',
-  paddingTop: '20px',
-  borderTop: '1px solid #1e293b'
-}
-
-// --- COMPONENT ---
 export default function Sidebar() {
-  const location = useLocation()
-  const isActive = (path) => location.pathname === path
+  const location = useLocation();
+
+  // Helper to check if link is active
+  const isActive = (path) => location.pathname === path ? 'active' : '';
 
   return (
-    <div style={sidebarStyle}>
-      <div style={brandStyle}>
-        <h2 style={{margin:0, fontSize:'20px'}}>📦 OFFICE PORTAL</h2>
-        <small style={{color:'#94a3b8', fontSize:'10px', letterSpacing:'1px'}}>V 1.0</small>
+    <div className="sidebar">
+      {/* Logo Section */}
+      <div className="logo-container">
+        <h2 style={{display:'flex', alignItems:'center', gap:'10px'}}>
+           <Container size={28} color="#2563eb" strokeWidth={2.5} /> 
+           Move+
+        </h2>
       </div>
 
-      <nav style={{display:'flex', flexDirection:'column', overflowY:'auto'}}>
+      {/* Navigation Menu */}
+      <nav className="nav-menu">
+        <Link to="/" className={`nav-item ${isActive('/')}`}>
+           <LayoutDashboard className="nav-icon" /> Dashboard
+        </Link>
         
-        {/* DASHBOARD */}
-        <Link to="/" style={isActive('/') ? activeLinkStyle : linkStyle}>
-          📊 Dashboard
+        <Link to="/trucks" className={`nav-item ${isActive('/trucks')}`}>
+           <Truck className="nav-icon" /> Trucks
+        </Link>
+        
+        <Link to="/equipment" className={`nav-item ${isActive('/equipment')}`}>
+           <Container className="nav-icon" /> Equipment
+        </Link>
+        
+        <Link to="/drivers" className={`nav-item ${isActive('/drivers')}`}>
+           <UserCircle className="nav-icon" /> Drivers
+        </Link>
+        
+        <Link to="/customers" className={`nav-item ${isActive('/customers')}`}>
+           <Briefcase className="nav-icon" /> Customers
         </Link>
 
-        {/* SECTION: GENERAL MASTERS */}
-        <div style={sectionLabelStyle}>GENERAL MASTERS</div>
-        
-        <Link to="/customers" style={isActive('/customers') ? activeLinkStyle : linkStyle}>
-          👥 Customer Directory
-        </Link>
-        <Link to="/users" style={isActive('/users') ? activeLinkStyle : linkStyle}>
-          🔐 User Management
-        </Link>
-        <Link to="/commodities" style={isActive('/commodities') ? activeLinkStyle : linkStyle}>
-          📦 Commodities
+        <Link to="/agents" className={`nav-item ${isActive('/agents')}`}>
+           <Users className="nav-icon" /> Agents
         </Link>
 
-        {/* SECTION: LOGISTICS */}
-        <div style={sectionLabelStyle}>LOGISTICS</div>
+        <Link to="/commodities" className={`nav-item ${isActive('/commodities')}`}>
+           <Box className="nav-icon" /> Commodities
+        </Link>
         
-        <Link to="/logistics-parties" style={isActive('/logistics-parties') ? activeLinkStyle : linkStyle}>
-          🚢 Logistics Directory
+        <Link to="/logistics-parties" className={`nav-item ${isActive('/logistics-parties')}`}>
+           <Map className="nav-icon" /> Directory
         </Link>
 
-        {/* SECTION: FLEET & ASSETS */}
-        <div style={sectionLabelStyle}>FLEET & ASSETS</div>
+        {/* Divider */}
+        <div className="nav-divider">Admin</div>
 
-        <Link to="/trucks" style={isActive('/trucks') ? activeLinkStyle : linkStyle}>
-          🚛 Trucks
-        </Link>
-        <Link to="/equipment" style={isActive('/equipment') ? activeLinkStyle : linkStyle}>
-          🚜 Equipment
-        </Link>
-        <Link to="/agents" style={isActive('/agents') ? activeLinkStyle : linkStyle}>
-          👤 Agents / Drivers
+        <Link to="/users" className={`nav-item ${isActive('/users')}`}>
+           <Users className="nav-icon" /> System Users
         </Link>
         
-        <Link to="/drivers" style={isActive('/drivers') ? activeLinkStyle : linkStyle}>
-        
-  🧢 Drivers
-  
-</Link>
-<Link to="/settings" className="nav-item">
-  ⚙️ Settings
-</Link>
-        {/* SECTION: COMMERCIAL (Coming Soon) */}
-        <div style={sectionLabelStyle}>COMMERCIAL</div>
-        
-        <div style={linkStyleDisabled}>📄 Proposals (Soon)</div>
-        <div style={linkStyleDisabled}>💰 Invoices (Soon)</div>
-
+        <Link to="/settings" className={`nav-item ${isActive('/settings')}`}>
+           <Settings className="nav-icon" /> Settings
+        </Link>
       </nav>
-
-      <div style={footerStyle}>
-        <div style={{fontWeight:'bold'}}>Logged In User</div>
-        <div style={{fontSize:'11px', color:'#94a3b8'}}>System Admin</div>
-      </div>
     </div>
-  )
+  );
 }

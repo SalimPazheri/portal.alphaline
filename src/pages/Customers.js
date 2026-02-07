@@ -1,401 +1,261 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
+import DocumentManager from '../components/DocumentManager'
 
+// 🔑 REPLACE WITH YOUR KEY
+const GOOGLE_API_KEY = 'AIzaSyAZUXRQEb1TYiAm4t3IrHS25QGug6oXi1I'; 
+
+const currencyMap = {
+  'United Arab Emirates': 'AED',
+  'Saudi Arabia': 'SAR',
+  'Qatar': 'QAR',
+  'Oman': 'OMR',
+  'Bahrain': 'BHD',
+  'Kuwait': 'KWD',
+  'United States': 'USD',
+  'United Kingdom': 'GBP',
+  'India': 'INR'
+}
 export default function Customers() {
-  const [customers, setCustomers] = useState([])
-  
-  // --- MASTER LISTS ---
-  const [designations, setDesignations] = useState([])
+  const [items, setItems] = useState([])
   const [countries, setCountries] = useState([])
-  const [cities, setCities] = useState([]) 
-  
-  const [userRole, setUserRole] = useState('sales') 
-  const [searchTerm, setSearchTerm] = useState('')
-  
-  // --- MODAL STATE ---
-  const [showCompanyModal, setShowCompanyModal] = useState(false)
-  const [isEditingCompany, setIsEditingCompany] = useState(false)
-  const [editingCompanyId, setEditingCompanyId] = useState(null)
-  
-  // 1. LOGIC FIX: Default Credit Limit set to 5000
-  const initialFormState = () => ({
-    company_name: '', address: '', city: '', country: '', office_phone: '', website: '', 
-    status: 'Active', credit_limit: '5000', 
-    contact_person: '', designation: '', email: '', mobile: '',
-    primary_contact_id: null 
-  })
-  
-  const [companyForm, setCompanyForm] = useState(initialFormState())
+  const [cities, setCities] = useState([])
+  const [designations, setDesignations] = useState([])
+  const [categories, setCategories] = useState([]) 
+  const [searchTerm, setSearchTerm] = useState('') 
+  const [showModal, setShowModal] = useState(false)
+  const [activeTab, setActiveTab] = useState('profile')
+  const [isEditing, setIsEditing] = useState(false)
 
-  // --- CONTACT MODAL STATE ---
-  const [showContactModal, setShowContactModal] = useState(false)
-  const [isEditingContact, setIsEditingContact] = useState(false)
-  const [editingContactId, setEditingContactId] = useState(null)
-  const [selectedCompany, setSelectedCompany] = useState(null)
-  const [contactForm, setContactForm] = useState({ contact_person: '', designation: '', email: '', mobile: '' })
+  // Google Maps Refs
+  const googleSearchRef = useRef(null)
+  const [isGoogleLoaded, setIsGoogleLoaded] = useState(false)
 
+  // --- INITIAL FORM STATE ---
+  const initialForm = {
+    id: null,
+    name: '',
+    category: '', 
+    
+    // Address Parts
+    po_box: '', street: '', city: '', country: 'United Arab Emirates',
+    
+    // VIP / Authorized Signatory
+    contact_person: '', designation: 'General Manager', 
+    office_phone: '', office_email: '', website: '',
+
+    // Financials
+    credit_limit: 5000, 
+    currency: 'AED', 
+    trn_number: '', 
+    introduced_by: '', // <--- RENAMED FIELD
+    status: 'Active',
+    
+    // Sales Team
+    contacts: [] 
+  }
+  const [form, setForm] = useState(initialForm)
+
+  // --- CURRENCY MAP (Option B) ---
+ 
+
+  // --- 1. LOAD DATA ---
   useEffect(() => {
-    checkUserRole()
-    fetchCustomers()
-    fetchMasters()
+    // Google Maps Script Loader
+    if (!window.google) {
+      const script = document.createElement('script')
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places`
+      script.async = true
+      script.onload = () => setIsGoogleLoaded(true)
+      document.body.appendChild(script)
+    } else { setIsGoogleLoaded(true) }
+    
+    fetchItems(); fetchCountries(); fetchDesignations(); fetchCategories() 
   }, [])
 
-  const checkUserRole = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data } = await supabase.from('user_roles').select('role').eq('user_email', user.email).single()
-      setUserRole(data ? data.role : 'admin') 
+  // --- 2. GOOGLE AUTOCOMPLETE ---
+  useEffect(() => {
+    if (isGoogleLoaded && showModal && activeTab === 'profile' && googleSearchRef.current) {
+      const autocomplete = new window.google.maps.places.Autocomplete(googleSearchRef.current, {
+        types: ['establishment'], fields: ['name', 'formatted_phone_number', 'website', 'address_components']
+      })
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace()
+        if (!place.name) return
+        
+        let city = '', country = '', street = ''
+        place.address_components?.forEach(c => {
+          if(c.types.includes('locality')) city = c.long_name
+          if(c.types.includes('country')) country = c.long_name
+          if(c.types.includes('route')) street = c.long_name
+        })
+
+        setForm(prev => ({
+          ...prev, name: place.name, street: street, city: city, country: country,
+          office_phone: place.formatted_phone_number || '', website: place.website || '',
+          contact_person: 'Manager'
+        }))
+        alert("✅ Data fetched! Please fill Authorized Signatory.")
+      })
     }
+  }, [isGoogleLoaded, showModal, activeTab])
+
+  // --- DATA FETCHING ---
+  const fetchItems = async (search = '') => {
+    try {
+      let query = supabase.from('master_customers').select('*, customer_contacts(*)').eq('is_deleted', false).order('created_at', { ascending: false })
+      if (search) query = query.ilike('name', `%${search}%`)
+      const { data } = await query
+      setItems(data || [])
+    } catch (error) { console.error(error) }
   }
+  
+  const fetchCountries = async () => { const { data } = await supabase.from('master_countries').select('name').order('name'); if(data) setCountries(data) }
+  const fetchCities = async (country) => { const { data } = await supabase.from('master_cities').select('name').eq('country_name', country).order('name'); setCities(data || []) }
+  const fetchDesignations = async () => { const { data } = await supabase.from('master_designations').select('title').order('title'); setDesignations(data || []) }
+  const fetchCategories = async () => { const { data } = await supabase.from('master_categories').select('title').order('title'); setCategories(data || []) }
 
-  const fetchMasters = async () => {
-    const { data: desData } = await supabase.from('master_designations').select('*').order('name', { ascending: true })
-    if (desData) setDesignations(desData)
-    
-    const { data: countryData } = await supabase.from('master_countries').select('*').order('name', { ascending: true })
-    if (countryData) setCountries(countryData)
-  }
-
-  const fetchCitiesForCountry = async (countryName) => {
-    if (!countryName) {
-      setCities([])
-      return
-    }
-    const countryObj = countries.find(c => c.name === countryName)
-    if (countryObj) {
-      const { data } = await supabase.from('master_cities').select('*').eq('country_id', countryObj.id).order('name', { ascending: true })
-      setCities(data || [])
-    } else {
-      setCities([])
-    }
-  }
-
-  // --- VALIDATION HELPERS ---
-  const isValidEmail = (email) => {
-    if (!email) return true 
-    const re = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/
-    return re.test(email.trim())
-  }
-
-  const isValidWebsite = (url) => {
-    if (!url) return true
-    const re = /^(https?:\/\/)?(www\.)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(\/[^\s]*)?$/
-    return re.test(url.trim())
-  }
-
-  // --- AUTO SAVE ---
-  const checkAndSaveDesignation = async (name) => {
-    if (!name) return
-    const exists = designations.some(d => d.name.toLowerCase() === name.toLowerCase())
-    if (!exists) {
-      await supabase.from('master_designations').insert([{ name: name }]).select()
-      const { data } = await supabase.from('master_designations').select('*').order('name', { ascending: true })
-      if (data) setDesignations(data)
-    }
-  }
-
-  const checkAndSaveCity = async (cityName, countryName) => {
-    if (!cityName || !countryName) return
-    const countryObj = countries.find(c => c.name === countryName)
-    if (!countryObj) return
-    const exists = cities.some(c => c.name.toLowerCase() === cityName.toLowerCase())
-    if (!exists) {
-      await supabase.from('master_cities').insert([{ name: cityName, country_id: countryObj.id }])
-    }
-  }
-
-  const fetchCustomers = async (query = '') => {
-    let supabaseQuery = supabase
-      .from('customers')
-      .select('*, company_contacts(*)')
-      .eq('is_deleted', false)
-      .order('created_at', { ascending: false })
-
-    if (query.length > 0) {
-      supabaseQuery = supabaseQuery.or(`company_name.ilike.%${query}%,city.ilike.%${query}%,office_phone.ilike.%${query}%`)
-    } else {
-      supabaseQuery = supabaseQuery.limit(10)
-    }
-
-    const { data, error } = await supabaseQuery
-    if (error) console.error(error)
-    else setCustomers(data)
-  }
-
-  const handleSearch = (e) => {
-    const value = e.target.value
-    setSearchTerm(value)
-    fetchCustomers(value)
-  }
-
-  // --- 2. LOGIC FIX: ORPHAN RECORD CHECK ---
-  const checkDependencies = async (customerId) => {
-    // FUTURE MODULES: Check these tables before deleting
-    
-    // Example: Check Invoices (Uncomment when Invoices table exists)
-    /*
-    const { count: invoiceCount } = await supabase
-      .from('invoices')
-      .select('id', { count: 'exact', head: true }) // head:true means don't fetch data, just count
-      .eq('customer_id', customerId)
-    
-    if (invoiceCount > 0) return 'Invoices'
-    */
-
-    // Example: Check Proposals
-    /*
-    const { count: proposalCount } = await supabase
-      .from('proposals')
-      .select('id', { count: 'exact', head: true })
-      .eq('customer_id', customerId)
-      
-    if (proposalCount > 0) return 'Proposals'
-    */
-
-    return null // No dependencies found, safe to delete
-  }
-
-  const handleDelete = async (id, name) => {
-    // 1. Confirm Intent
-    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return
-
-    // 2. Check for Redundancy / Dependencies
-    const dependency = await checkDependencies(id)
-    
-    if (dependency) {
-      // 3. Block Deletion if found
-      alert(`⛔ COMPLIANCE ALERT\n\nCannot delete "${name}".\n\nThis customer has related records in: ${dependency}.\nPlease delete those records first or archive this customer instead.`)
-      return
-    }
-
-    // 4. Safe to Delete (Soft Delete)
-    const { error } = await supabase.from('customers').update({ is_deleted: true }).eq('id', id)
-    if (error) alert('Error: ' + error.message)
-    else fetchCustomers(searchTerm)
-  }
-
-
-  // --- HANDLERS: COMPANY ---
-  const openNewCompanyModal = () => {
-    setIsEditingCompany(false)
-    setCompanyForm(initialFormState())
-    setCities([]) 
-    setShowCompanyModal(true)
-  }
-
-  const openModifyCompanyModal = (customer) => {
-    setIsEditingCompany(true)
-    setEditingCompanyId(customer.id)
-    
-    const primaryContact = customer.company_contacts?.find(c => c.is_primary) || customer.company_contacts?.[0] || {}
-
-    setCompanyForm({ 
-      ...initialFormState(), 
-      ...customer, 
-      credit_limit: customer.credit_limit || 0,
-      contact_person: primaryContact.contact_person || '',
-      designation: primaryContact.designation || '',
-      email: primaryContact.email || '',
-      mobile: primaryContact.mobile || '',
-      primary_contact_id: primaryContact.id || null
-    })
-    
-    fetchCitiesForCountry(customer.country)
-    setShowCompanyModal(true)
-  }
-
-  const handleCompanyChange = (e) => {
-    const { name, value } = e.target
-    setCompanyForm({ ...companyForm, [name]: value })
-    if (name === 'country') {
-      setCompanyForm(prev => ({ ...prev, country: value, city: '' })) 
-      fetchCitiesForCountry(value)
-    }
-  }
-
-  const handleCompanySubmit = async (e) => {
-    e.preventDefault()
-
-    const cleanEmail = companyForm.email ? companyForm.email.trim() : ''
-    const cleanWebsite = companyForm.website ? companyForm.website.trim() : ''
-
-    if (cleanEmail && !isValidEmail(cleanEmail)) {
-      alert("⚠️ Invalid Email format.\nExample: user@domain.com")
-      return
-    }
-    if (cleanWebsite && !isValidWebsite(cleanWebsite)) {
-      alert("⚠️ Invalid Website format.\nExample: example.com or www.example.com\n(No spaces allowed)")
-      return
-    }
-
-    const { company_name, address, city, country, office_phone, status, credit_limit } = companyForm
-    const companyData = { 
-      company_name, 
-      address, 
-      city, 
-      country, 
-      office_phone, 
-      website: cleanWebsite 
-    }
-    
-    await checkAndSaveDesignation(companyForm.designation)
-    await checkAndSaveCity(city, country)
-
-    if (userRole === 'admin' || userRole === 'manager') {
-      companyData.status = status
-      companyData.credit_limit = credit_limit
-    }
-
-    if (isEditingCompany) {
-      const { error } = await supabase.from('customers').update(companyData).eq('id', editingCompanyId)
-      if (error) { alert(error.message); return; }
-
-      if (companyForm.primary_contact_id) {
-        await supabase.from('company_contacts').update({
-          contact_person: companyForm.contact_person,
-          designation: companyForm.designation,
-          email: cleanEmail, // Save clean email
-          mobile: companyForm.mobile
-        }).eq('id', companyForm.primary_contact_id)
-      } else {
-        await supabase.from('company_contacts').insert([{
-          company_id: editingCompanyId,
-          contact_person: companyForm.contact_person,
-          designation: companyForm.designation,
-          email: cleanEmail,
-          mobile: companyForm.mobile,
-          is_primary: true
-        }])
+  // --- SMART CURRENCY & CITY LOGIC ---
+  useEffect(() => { 
+      if(form.country) {
+          fetchCities(form.country)
+          // Auto-set Currency
+          const currency = currencyMap[form.country] || 'USD' // Default fallback
+          setForm(prev => ({ ...prev, currency: currency }))
       }
+  }, [form.country])
 
-    } else {
-      // Force Active status for new
-      companyData.status = 'Active' 
-      const { data, error } = await supabase.from('customers').insert([companyData]).select()
-      if (error) return alert(error.message)
-      
-      await supabase.from('company_contacts').insert([{
-          company_id: data[0].id,
-          contact_person: companyForm.contact_person,
-          designation: companyForm.designation,
-          email: cleanEmail,
-          mobile: companyForm.mobile,
-          is_primary: true
-      }])
-    }
-    fetchCustomers(searchTerm)
-    setShowCompanyModal(false)
+  // --- SMART ADDERS ---
+  const handleAddCity = async () => {
+      const val = prompt("New City Name:"); if(!val) return
+      await supabase.from('master_cities').insert([{ country_name: form.country, name: val }])
+      fetchCities(form.country); setForm(p => ({...p, city: val}))
+  }
+  const handleAddDesignation = async () => {
+      const val = prompt("New Designation:"); if(!val) return
+      await supabase.from('master_designations').insert([{ title: val }])
+      fetchDesignations(); setForm(p => ({...p, designation: val}))
+  }
+  const handleAddCategory = async () => {
+      const val = prompt("New Category Name:"); if(!val) return
+      const { error } = await supabase.from('master_categories').insert([{ title: val }])
+      if(error) alert(error.message)
+      else { await fetchCategories(); setForm(p => ({...p, category: val})) }
   }
 
-  // --- HANDLERS: CONTACT ---
-  const openContactModal = (company, person = null) => {
-    setSelectedCompany(company)
-    if (person) {
-      setIsEditingContact(true)
-      setEditingContactId(person.id)
-      setContactForm(person)
-    } else {
-      setIsEditingContact(false)
-      setContactForm({ contact_person: '', designation: '', email: '', mobile: '' })
+  // --- TEAM MANAGEMENT ---
+  const addTeamMember = () => setForm(p => ({ ...p, contacts: [...p.contacts, { contact_person: '', designation: '', mobile: '', email: '' }] }))
+  const removeTeamMember = (idx) => { const c = [...form.contacts]; c.splice(idx, 1); setForm(p => ({ ...p, contacts: c })) }
+  const updateTeamMember = (idx, field, val) => { const c = [...form.contacts]; c[idx][field] = val; setForm(p => ({ ...p, contacts: c })) }
+
+  // --- SAVE LOGIC (FIXED: KEEPS PO BOX) ---
+  const handleSave = async () => {
+    const payload = { ...form }
+    
+    // Validation
+    if(payload.name.length < 3) return alert("❌ Name too short!")
+    if(!payload.category) return alert("❌ Please select a Category.")
+    if(!payload.city) return alert("❌ Please select a City.")
+    
+    // Address Composition (For Proposals)
+    payload.address = `
+${payload.contact_person} (${payload.designation})
+${payload.po_box || ''} ${payload.street || ''}
+${payload.city}, ${payload.country}
+Ph: ${payload.office_phone}
+    `.trim()
+
+    // Clean Payload
+    delete payload.id; delete payload.contacts; delete payload.customer_contacts
+    
+    // Note: We KEEP po_box and street so they are saved!
+
+    // 1. Save Master
+    let { data, error } = isEditing 
+        ? await supabase.from('master_customers').update(payload).eq('id', form.id).select()
+        : await supabase.from('master_customers').insert([payload]).select()
+    
+    if(error) return alert("Error: " + error.message)
+    const customerId = data[0].id
+
+    // 2. Save Team
+    if(form.contacts.length > 0) {
+        await supabase.from('customer_contacts').delete().eq('customer_id', customerId)
+        const teamPayload = form.contacts.map(c => ({
+            customer_id: customerId, ...c
+        })).filter(c => c.contact_person)
+        await supabase.from('customer_contacts').insert(teamPayload)
     }
-    setShowContactModal(true)
+
+    setShowModal(false); fetchItems(searchTerm)
   }
 
-  const handleContactSubmit = async (e) => {
-    e.preventDefault()
-
-    const cleanEmail = contactForm.email ? contactForm.email.trim() : ''
-
-    if (cleanEmail && !isValidEmail(cleanEmail)) {
-      alert("⚠️ Invalid Email Address format.")
-      return
-    }
-
-    await checkAndSaveDesignation(contactForm.designation)
-
-    const payload = { ...contactForm, email: cleanEmail, company_id: selectedCompany.id }
-    if (!isEditingContact) payload.is_primary = false
-
-    let error
-    if (isEditingContact) {
-      const { error: err } = await supabase.from('company_contacts').update(payload).eq('id', editingContactId)
-      error = err
-    } else {
-      const { error: err } = await supabase.from('company_contacts').insert([payload])
-      error = err
-    }
-
-    if (error) alert(error.message)
-    else {
-      fetchCustomers(searchTerm)
-      setShowContactModal(false)
-    }
+  // --- DELETE LOGIC ---
+  const handleDelete = async (id) => {
+      if(window.confirm("Delete Customer?")) {
+          await supabase.from('master_customers').update({ is_deleted: true }).eq('id', id)
+          fetchItems(searchTerm)
+      }
   }
 
-  const getStatusColor = (status) => {
-    if (status === 'Active') return '#28a745'
-    if (status === 'Suspended') return '#ffc107'
-    if (status === 'Blacklisted') return '#dc3545'
-    return '#6c757d'
+  // Helpers
+  const openAdd = () => { setForm(initialForm); setIsEditing(false); setActiveTab('profile'); setShowModal(true) }
+  const openEdit = (item) => { 
+      setForm({ ...item, contacts: item.customer_contacts || [] }); 
+      setIsEditing(true); setActiveTab('profile'); setShowModal(true) 
   }
+  
+  const tabStyle = (name) => ({ padding:'12px 20px', cursor:'pointer', borderBottom: activeTab===name?'3px solid #2563eb':'3px solid transparent', color: activeTab===name?'#2563eb':'#64748b', fontWeight:'bold' })
 
   return (
-    <div className="page-container">
-      <datalist id="designation-list">
-        {designations.map(d => <option key={d.id} value={d.name} />)}
-      </datalist>
-      <datalist id="city-list">
-        {cities.map(c => <option key={c.id} value={c.name} />)}
-      </datalist>
-
+    <div className="page-container" style={{fontSize:'13px'}}>
       <div className="header-row">
-        <h2 style={{margin:0, fontSize:'20px'}}>👥 Customer Directory</h2>
-        <input type="text" placeholder="🔍 Search Company, City or Phone..." value={searchTerm} onChange={handleSearch} className="search-bar" />
-        <button onClick={openNewCompanyModal} className="btn btn-primary">+ Add New</button>
+        <h2>👥 Master Customers</h2>
+        <div style={{display:'flex', gap:'10px'}}>
+            <input placeholder="🔍 Search..." onChange={e => {setSearchTerm(e.target.value); fetchItems(e.target.value)}} className="search-bar" />
+            <button onClick={openAdd} className="btn btn-primary">+ New Customer</button>
+        </div>
       </div>
 
+      {/* SMART GRID */}
       <div className="table-card">
         <table className="data-table">
-          <thead>
-            <tr>
-              <th style={{width:'30%'}}>Company Name</th>
-              <th>Details</th>
-              <th>Contact Person</th>
-              <th>City/Country</th>
-              <th style={{textAlign:'center'}}>Actions</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Customer / Category</th><th>Auth. Signatory</th><th>Sales & Procurement</th><th>Status</th><th>Action</th></tr></thead>
           <tbody>
-            {customers.map((c) => (
-              <tr key={c.id} style={{ background: c.status === 'Blacklisted' ? '#fff0f0' : 'inherit' }}>
+            {items.map(item => (
+              <tr key={item.id}>
                 <td>
-                  <div style={{fontWeight:'bold', color:'#007bff'}}>{c.company_name}</div>
-                  <div style={{display:'flex', gap:'5px', marginTop:'4px'}}>
-                    <span className="status-badge" style={{ backgroundColor: getStatusColor(c.status) }}>{c.status}</span>
-                    {Number(c.credit_limit) > 0 && <span style={{fontSize:'10px', color:'#666', border:'1px solid #ccc', padding:'0 4px', borderRadius:'3px'}}>AED {c.credit_limit}</span>}
-                  </div>
+                    <strong>{item.name}</strong><br/>
+                    <span style={{fontSize:'10px', background:'#e0f2fe', color:'#0369a1', padding:'2px 6px', borderRadius:'4px'}}>
+                        {item.category || 'Uncategorized'}
+                    </span>
+                    <span style={{fontSize:'11px', color:'#64748b', marginLeft:'5px'}}>{item.city}</span>
                 </td>
                 <td>
-                  <div>📞 {c.office_phone}</div>
-                  <div style={{fontSize:'11px', color:'#666'}}>{c.website}</div>
+                    {item.contact_person}<br/>
+                    <small style={{color:'#64748b'}}>{item.designation}</small>
                 </td>
                 <td>
-                  {c.company_contacts?.map((p) => (
-                    <div key={p.id} className="person-row" style={{alignItems:'flex-start'}}>
-                      <div>
-                        <strong>{p.contact_person}</strong> <small>({p.designation})</small><br/>
-                        <small style={{color:'#555'}}>📱 {p.mobile}</small><br/>
-                        <small style={{color:'#007bff', fontWeight:'500'}}>✉️ {p.email}</small>
-                      </div>
-                      <span className="icon-action" onClick={() => openContactModal(c, p)} title="Edit">✎</span>
-                    </div>
-                  ))}
+                    {/* SMART DISPLAY LOGIC */}
+                    {item.customer_contacts && item.customer_contacts.length > 0 ? (
+                        <div>
+                            <span style={{fontWeight:'600'}}>{item.customer_contacts[0].contact_person}</span>
+                            <br/>
+                            <small style={{color:'#64748b'}}>{item.customer_contacts[0].designation}</small>
+                            {item.customer_contacts.length > 1 && (
+                                <span style={{marginLeft:'5px', fontSize:'10px', background:'#f1f5f9', padding:'1px 4px', borderRadius:'4px'}}>
+                                    +{item.customer_contacts.length - 1} more
+                                </span>
+                            )}
+                        </div>
+                    ) : (
+                        <span style={{color:'#94a3b8', fontStyle:'italic'}}>(Same as Primary)</span>
+                    )}
                 </td>
-                <td>{c.city}, {c.country}</td>
-                <td style={{textAlign:'center'}}>
-                   <span onClick={() => openModifyCompanyModal(c)} className="icon-action" title="Modify Company">📝</span>
-                   <span onClick={() => openContactModal(c)} className="icon-action" title="Add Contact Person">➕</span>
-                   <span onClick={() => handleDelete(c.id, c.company_name)} className="icon-action" title="Delete" style={{color:'#dc3545', marginLeft:'10px'}}>🗑️</span>
+                <td><span className={`status-badge ${item.status==='Active'?'green':'red'}`}>{item.status}</span></td>
+                <td>
+                    <span onClick={()=>openEdit(item)} className="icon-action">📝</span>
+                    <span onClick={()=>handleDelete(item.id)} className="icon-action" style={{color:'red', marginLeft:'10px'}}>🗑️</span>
                 </td>
               </tr>
             ))}
@@ -403,94 +263,112 @@ export default function Customers() {
         </table>
       </div>
 
-      {/* --- COMPANY MODAL --- */}
-      {showCompanyModal && (
+      {/* MODAL */}
+      {showModal && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3>{isEditingCompany ? 'Modify Company' : 'Add New Company'}</h3>
-              <button onClick={() => setShowCompanyModal(false)} className="btn-close">✖</button>
+          <div className="modal-content" style={{width:'900px', height:'auto'}}>
+            <div className="modal-header"><h3>{isEditing?'Edit Customer':'New Customer'}</h3><button onClick={()=>setShowModal(false)} className="btn-close">✖</button></div>
+            
+            <div style={{display:'flex', borderBottom:'1px solid #eee', background:'#f8fafc'}}>
+                <div onClick={()=>setActiveTab('profile')} style={tabStyle('profile')}>1. Profile & Signatory</div>
+                <div onClick={()=>setActiveTab('team')} style={tabStyle('team')}>2. Sales & Procurement</div>
+                <div onClick={()=>setActiveTab('finance')} style={tabStyle('finance')}>3. Financials</div>
+                <div onClick={()=>isEditing && setActiveTab('docs')} style={tabStyle('docs')}>4. Documents</div>
             </div>
-            <form onSubmit={handleCompanySubmit}>
-              <div className="admin-panel">
+
+            <div className="modal-body">
+              {/* TAB 1: SMART PROFILE */}
+              {activeTab === 'profile' && (
                 <div className="form-grid">
-                  <div>
-                    <span className="form-label">Status</span>
-                    <select name="status" value={companyForm.status || 'Active'} onChange={handleCompanyChange} disabled={!isEditingCompany || (userRole !== 'admin' && userRole !== 'manager')} className="form-input">
-                      <option>Active</option><option>Suspended</option><option>Blacklisted</option>
-                    </select>
-                  </div>
-                  <div>
-                    <span className="form-label">Credit Limit (AED)</span>
-                    <input type="number" name="credit_limit" value={companyForm.credit_limit} onChange={handleCompanyChange} disabled={userRole !== 'admin' && userRole !== 'manager'} className="form-input" />
-                  </div>
-                </div>
-              </div>
+                   <div style={{gridColumn:'span 2', background:'#eff6ff', padding:'10px', borderRadius:'8px', marginBottom:'10px'}}>
+                       <span style={{fontWeight:'bold', color:'#1e40af'}}>🚀 Auto-Fill from Google:</span>
+                       <input ref={googleSearchRef} className="form-input" placeholder="Type Company Name..." style={{marginTop:'5px', border:'2px solid #3b82f6'}} />
+                   </div>
 
-              <h4 className="form-section-title">🏢 Company Info</h4>
-              <div className="form-grid">
-                <div><span className="form-label">Company Name *</span><input name="company_name" value={companyForm.company_name || ''} onChange={handleCompanyChange} className="form-input" required /></div>
-                <div><span className="form-label">Office Phone</span><input name="office_phone" value={companyForm.office_phone || ''} onChange={handleCompanyChange} className="form-input" /></div>
-                
+                   <div><span className="form-label">Customer Name *</span><input value={form.name} onChange={e=>setForm({...form, name:e.target.value})} className="form-input" /></div>
+                   
+                   <div>
+                       <span className="form-label">Business Category *</span>
+                       <div style={{display:'flex', gap:'5px'}}>
+                           <select value={form.category} onChange={e=>setForm({...form, category:e.target.value})} className="form-input">
+                               <option value="">-- Select Category --</option>
+                               {categories.map(c=><option key={c.id} value={c.title}>{c.title}</option>)}
+                           </select>
+                           <button onClick={handleAddCategory} className="btn btn-success">+</button>
+                       </div>
+                   </div>
+                   
+                   <div><span className="form-label">Website</span><input value={form.website} onChange={e=>setForm({...form, website:e.target.value})} className="form-input" /></div>
+
+                   <h4 style={{gridColumn:'span 2', margin:'10px 0 0', color:'#2563eb'}}>✒️ Authorized Signatory</h4>
+                   <div><span className="form-label">Full Name</span><input value={form.contact_person} onChange={e=>setForm({...form, contact_person:e.target.value})} className="form-input" placeholder="Owner/GM Name" /></div>
+                   <div>
+                       <span className="form-label">Designation</span>
+                       <div style={{display:'flex', gap:'5px'}}>
+                           <select value={form.designation} onChange={e=>setForm({...form, designation:e.target.value})} className="form-input">
+                               {designations.map(d=><option key={d.id} value={d.title}>{d.title}</option>)}
+                           </select>
+                           <button onClick={handleAddDesignation} className="btn btn-success">+</button>
+                       </div>
+                   </div>
+                   
+                   <h4 style={{gridColumn:'span 2', margin:'10px 0 0', color:'#2563eb'}}>📍 Address</h4>
+                   <div>
+                       <span className="form-label">City</span>
+                       <div style={{display:'flex', gap:'5px'}}>
+                           <select value={form.city} onChange={e=>setForm({...form, city:e.target.value})} className="form-input">
+                               <option value="">-- Select --</option>
+                               {cities.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                           </select>
+                           <button onClick={handleAddCity} className="btn btn-success">+</button>
+                       </div>
+                   </div>
+                   <div><span className="form-label">Country</span><select value={form.country} onChange={e=>setForm({...form, country:e.target.value})} className="form-input">{countries.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+                   <div><span className="form-label">PO Box</span><input value={form.po_box} onChange={e=>setForm({...form, po_box:e.target.value})} className="form-input" /></div>
+                   <div><span className="form-label">Street</span><input value={form.street} onChange={e=>setForm({...form, street:e.target.value})} className="form-input" /></div>
+                   <div><span className="form-label">Office Phone</span><input value={form.office_phone} onChange={e=>setForm({...form, office_phone:e.target.value})} className="form-input" /></div>
+                   <div><span className="form-label">Office Email</span><input value={form.office_email} onChange={e=>setForm({...form, office_email:e.target.value})} className="form-input" /></div>
+                </div>
+              )}
+
+              {/* TAB 2: SALES TEAM */}
+              {activeTab === 'team' && (
                 <div>
-                  <span className="form-label">Country</span>
-                  <select name="country" value={companyForm.country} onChange={handleCompanyChange} className="form-input">
-                    <option value="">-- Select --</option>
-                    {countries.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                  </select>
+                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'10px'}}>
+                        <h4>🎯 Sales & Procurement Contacts</h4>
+                        <button onClick={addTeamMember} className="btn btn-success">+ Add Contact</button>
+                    </div>
+                    {form.contacts.map((row, idx) => (
+                        <div key={idx} style={{display:'grid', gridTemplateColumns:'1.5fr 1fr 1fr 1fr 0.2fr', gap:'5px', marginBottom:'5px'}}>
+                            <input placeholder="Name" value={row.contact_person} onChange={e=>updateTeamMember(idx, 'contact_person', e.target.value)} className="form-input" />
+                            <input placeholder="Role" value={row.designation} onChange={e=>updateTeamMember(idx, 'designation', e.target.value)} className="form-input" />
+                            <input placeholder="Mobile" value={row.mobile} onChange={e=>updateTeamMember(idx, 'mobile', e.target.value)} className="form-input" />
+                            <input placeholder="Email" value={row.email} onChange={e=>updateTeamMember(idx, 'email', e.target.value)} className="form-input" />
+                            <button onClick={()=>removeTeamMember(idx)} style={{border:'none', background:'none', color:'red', cursor:'pointer'}}>✖</button>
+                        </div>
+                    ))}
+                    {form.contacts.length===0 && <div style={{textAlign:'center', color:'#ccc'}}>No contacts added. (Will use Primary for proposals)</div>}
                 </div>
+              )}
 
-                <div>
-                  <span className="form-label">City</span>
-                  <input name="city" list="city-list" value={companyForm.city} onChange={handleCompanyChange} className="form-input" placeholder={companyForm.country ? "Select or type new..." : "Select Country first"} disabled={!companyForm.country} />
+              {/* TAB 3: FINANCIALS */}
+              {activeTab === 'finance' && (
+                <div className="form-grid">
+                    <div><span className="form-label">Credit Limit (AED)</span><input type="number" value={form.credit_limit} onChange={e=>setForm({...form, credit_limit:e.target.value})} className="form-input" /></div>
+                    <div><span className="form-label">TRN Number</span><input value={form.trn_number} onChange={e=>setForm({...form, trn_number:e.target.value})} className="form-input" /></div>
+                    
+                    {/* RENAMED FIELD */}
+                    <div><span className="form-label">Introduced By</span><input value={form.introduced_by} onChange={e=>setForm({...form, introduced_by:e.target.value})} className="form-input" /></div>
+                    
+                    <div><span className="form-label">Currency</span><input disabled value={form.currency} className="form-input" style={{background:'#eee'}} /></div>
                 </div>
+              )}
 
-                <div style={{gridColumn:'span 2'}}><span className="form-label">Address</span><input name="address" value={companyForm.address || ''} onChange={handleCompanyChange} className="form-input" /></div>
-                <div><span className="form-label">Website</span><input name="website" value={companyForm.website || ''} onChange={handleCompanyChange} className="form-input" placeholder="e.g. example.com" /></div>
-              </div>
-
-              <h4 className="form-section-title">👤 Primary Contact</h4>
-              <div className="form-grid">
-                <div><span className="form-label">Contact Name *</span><input name="contact_person" value={companyForm.contact_person} onChange={handleCompanyChange} className="form-input" required /></div>
-                <div>
-                    <span className="form-label">Designation</span>
-                    <input name="designation" list="designation-list" value={companyForm.designation} onChange={handleCompanyChange} className="form-input" placeholder="Select or type..." />
-                </div>
-                <div><span className="form-label">Mobile</span><input name="mobile" value={companyForm.mobile} onChange={handleCompanyChange} className="form-input" /></div>
-                <div><span className="form-label">Email</span><input name="email" value={companyForm.email} onChange={handleCompanyChange} className="form-input" placeholder="name@domain.com" /></div>
-              </div>
-
-              <div style={{ marginTop: '20px', textAlign: 'right' }}>
-                <button type="submit" className="btn btn-primary">Save Changes</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* --- CONTACT MODAL --- */}
-      {showContactModal && selectedCompany && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{width:'400px'}}>
-            <div className="modal-header">
-              <h3>{isEditingContact ? 'Edit Person' : 'Add Contact'}</h3>
-              <button onClick={() => setShowContactModal(false)} className="btn-close">✖</button>
+              {/* TAB 4: DOCUMENTS */}
+              {activeTab === 'docs' && <DocumentManager relatedType="Customer" relatedId={form.id} />}
             </div>
-            <p style={{marginBottom:'15px', fontSize:'12px', color:'#666'}}>For: <strong>{selectedCompany.company_name}</strong></p>
-            <form onSubmit={handleContactSubmit}>
-              <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-                <div><span className="form-label">Name *</span><input name="contact_person" value={contactForm.contact_person || ''} onChange={(e) => setContactForm({...contactForm, contact_person: e.target.value})} className="form-input" required /></div>
-                <div>
-                    <span className="form-label">Designation</span>
-                    <input name="designation" list="designation-list" value={contactForm.designation || ''} onChange={(e) => setContactForm({...contactForm, designation: e.target.value})} className="form-input" placeholder="Select or type..." />
-                </div>
-                <div><span className="form-label">Mobile</span><input name="mobile" value={contactForm.mobile || ''} onChange={(e) => setContactForm({...contactForm, mobile: e.target.value})} className="form-input" /></div>
-                <div><span className="form-label">Email</span><input name="email" value={contactForm.email || ''} onChange={(e) => setContactForm({...contactForm, email: e.target.value})} className="form-input" placeholder="name@domain.com" /></div>
-              </div>
-              <div style={{ marginTop: '20px', textAlign: 'right' }}>
-                 <button type="submit" className="btn btn-success">Save Person</button>
-              </div>
-            </form>
+
+            <div className="modal-footer"><button onClick={handleSave} className="btn btn-primary">💾 Save All Changes</button></div>
           </div>
         </div>
       )}
