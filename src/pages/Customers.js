@@ -6,16 +6,11 @@ import DocumentManager from '../components/DocumentManager'
 const GOOGLE_API_KEY = 'AIzaSyAZUXRQEb1TYiAm4t3IrHS25QGug6oXi1I'; 
 
 const currencyMap = {
-  'United Arab Emirates': 'AED',
-  'Saudi Arabia': 'SAR',
-  'Qatar': 'QAR',
-  'Oman': 'OMR',
-  'Bahrain': 'BHD',
-  'Kuwait': 'KWD',
-  'United States': 'USD',
-  'United Kingdom': 'GBP',
-  'India': 'INR'
+  'United Arab Emirates': 'AED', 'Saudi Arabia': 'SAR', 'Qatar': 'QAR',
+  'Oman': 'OMR', 'Bahrain': 'BHD', 'Kuwait': 'KWD',
+  'United States': 'USD', 'United Kingdom': 'GBP', 'India': 'INR'
 }
+
 export default function Customers() {
   const [items, setItems] = useState([])
   const [countries, setCountries] = useState([])
@@ -37,31 +32,31 @@ export default function Customers() {
     name: '',
     category: '', 
     
-    // Address Parts
+    // Address Parts (Pure Location now)
     po_box: '', street: '', city: '', country: 'United Arab Emirates',
     
-    // VIP / Authorized Signatory
-    contact_person: '', designation: 'General Manager', 
-    office_phone: '', office_email: '', website: '',
+    // Primary Contact (The "Default" one)
+    default_contact_name: '',       // Mapped to DB: default_contact_name
+    default_designation: 'General Manager', // Mapped to DB: default_designation
+    default_mobile: '',             // Mapped to DB: default_mobile
+    default_email: '',              // Mapped to DB: default_email
+    
+    website: '',
 
     // Financials
     credit_limit: 5000, 
     currency: 'AED', 
     trn_number: '', 
-    introduced_by: '', // <--- RENAMED FIELD
+    introduced_by: '', 
     status: 'Active',
     
-    // Sales Team
+    // Additional Sales Team
     contacts: [] 
   }
   const [form, setForm] = useState(initialForm)
 
-  // --- CURRENCY MAP (Option B) ---
- 
-
   // --- 1. LOAD DATA ---
   useEffect(() => {
-    // Google Maps Script Loader
     if (!window.google) {
       const script = document.createElement('script')
       script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places`
@@ -92,10 +87,9 @@ export default function Customers() {
 
         setForm(prev => ({
           ...prev, name: place.name, street: street, city: city, country: country,
-          office_phone: place.formatted_phone_number || '', website: place.website || '',
-          contact_person: 'Manager'
+          default_mobile: place.formatted_phone_number || '', website: place.website || '',
+          default_contact_name: 'Manager'
         }))
-        alert("✅ Data fetched! Please fill Authorized Signatory.")
       })
     }
   }, [isGoogleLoaded, showModal, activeTab])
@@ -103,9 +97,15 @@ export default function Customers() {
   // --- DATA FETCHING ---
   const fetchItems = async (search = '') => {
     try {
-      let query = supabase.from('master_customers').select('*, customer_contacts(*)').eq('is_deleted', false).order('created_at', { ascending: false })
+      // We fetch everything, including the sub-table contacts
+      let query = supabase.from('master_customers')
+        .select('*, customer_contacts(*)')
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+      
       if (search) query = query.ilike('name', `%${search}%`)
-      const { data } = await query
+      const { data, error } = await query
+      if (error) throw error
       setItems(data || [])
     } catch (error) { console.error(error) }
   }
@@ -115,12 +115,10 @@ export default function Customers() {
   const fetchDesignations = async () => { const { data } = await supabase.from('master_designations').select('title').order('title'); setDesignations(data || []) }
   const fetchCategories = async () => { const { data } = await supabase.from('master_categories').select('title').order('title'); setCategories(data || []) }
 
-  // --- SMART CURRENCY & CITY LOGIC ---
   useEffect(() => { 
       if(form.country) {
           fetchCities(form.country)
-          // Auto-set Currency
-          const currency = currencyMap[form.country] || 'USD' // Default fallback
+          const currency = currencyMap[form.country] || 'USD'
           setForm(prev => ({ ...prev, currency: currency }))
       }
   }, [form.country])
@@ -134,7 +132,7 @@ export default function Customers() {
   const handleAddDesignation = async () => {
       const val = prompt("New Designation:"); if(!val) return
       await supabase.from('master_designations').insert([{ title: val }])
-      fetchDesignations(); setForm(p => ({...p, designation: val}))
+      fetchDesignations(); setForm(p => ({...p, default_designation: val}))
   }
   const handleAddCategory = async () => {
       const val = prompt("New Category Name:"); if(!val) return
@@ -148,49 +146,97 @@ export default function Customers() {
   const removeTeamMember = (idx) => { const c = [...form.contacts]; c.splice(idx, 1); setForm(p => ({ ...p, contacts: c })) }
   const updateTeamMember = (idx, field, val) => { const c = [...form.contacts]; c[idx][field] = val; setForm(p => ({ ...p, contacts: c })) }
 
-  // --- SAVE LOGIC (FIXED: KEEPS PO BOX) ---
+  // --- 💾 SAVE LOGIC (THE FIX) ---
   const handleSave = async () => {
     const payload = { ...form }
     
-    // Validation
+    // 1. Validation
     if(payload.name.length < 3) return alert("❌ Name too short!")
     if(!payload.category) return alert("❌ Please select a Category.")
     if(!payload.city) return alert("❌ Please select a City.")
-    
-    // Address Composition (For Proposals)
+    if(!payload.default_contact_name) return alert("❌ Primary Contact Name is required.")
+
+    // 2. Fix Address: PURE Location only (No names here!)
+    // This solves your issue of "Primary contact saved in address field"
     payload.address = `
-${payload.contact_person} (${payload.designation})
-${payload.po_box || ''} ${payload.street || ''}
+${payload.po_box ? 'PO Box: ' + payload.po_box : ''} 
+${payload.street || ''}
 ${payload.city}, ${payload.country}
-Ph: ${payload.office_phone}
     `.trim()
 
-    // Clean Payload
-    delete payload.id; delete payload.contacts; delete payload.customer_contacts
-    
-    // Note: We KEEP po_box and street so they are saved!
+    // 3. Clean Payload for Master Table
+    const masterPayload = {
+        name: payload.name,
+        category: payload.category,
+        city: payload.city,
+        country: payload.country,
+        address: payload.address, // Clean address
+        po_box: payload.po_box,
+        street: payload.street,
+        
+        // Save Default Contact Columns Explicitly
+        default_contact_name: payload.default_contact_name,
+        default_designation: payload.default_designation,
+        default_mobile: payload.default_mobile,
+        default_email: payload.default_email,
 
-    // 1. Save Master
+        website: payload.website,
+        credit_limit: payload.credit_limit,
+        currency: payload.currency,
+        trn_number: payload.trn_number,
+        introduced_by: payload.introduced_by,
+        status: payload.status
+    }
+
+    // 4. Insert/Update Master Customer
     let { data, error } = isEditing 
-        ? await supabase.from('master_customers').update(payload).eq('id', form.id).select()
-        : await supabase.from('master_customers').insert([payload]).select()
+        ? await supabase.from('master_customers').update(masterPayload).eq('id', form.id).select()
+        : await supabase.from('master_customers').insert([masterPayload]).select()
     
     if(error) return alert("Error: " + error.message)
     const customerId = data[0].id
 
-    // 2. Save Team
-    if(form.contacts.length > 0) {
-        await supabase.from('customer_contacts').delete().eq('customer_id', customerId)
-        const teamPayload = form.contacts.map(c => ({
-            customer_id: customerId, ...c
-        })).filter(c => c.contact_person)
-        await supabase.from('customer_contacts').insert(teamPayload)
+    // 5. HANDLE CONTACTS (THE COPY LOGIC)
+    // We delete all old contacts for this customer to ensure a clean slate
+    await supabase.from('customer_contacts').delete().eq('customer_id', customerId)
+
+    const allContacts = []
+
+    // A. Add the PRIMARY Contact (Copied from Master)
+    allContacts.push({
+        customer_id: customerId,
+        contact_person: payload.default_contact_name,
+        designation: payload.default_designation,
+        mobile: payload.default_mobile,
+        email: payload.default_email,
+        is_primary: true // Mark as Primary
+    })
+
+    // B. Add the Additional Sales Team
+    if (form.contacts && form.contacts.length > 0) {
+        form.contacts.forEach(c => {
+            if (c.contact_person) {
+                allContacts.push({
+                    customer_id: customerId,
+                    contact_person: c.contact_person,
+                    designation: c.designation,
+                    mobile: c.mobile,
+                    email: c.email,
+                    is_primary: false
+                })
+            }
+        })
+    }
+
+    // C. Save All to Table 2
+    if(allContacts.length > 0) {
+        const { error: teamError } = await supabase.from('customer_contacts').insert(allContacts)
+        if (teamError) console.error("Team Save Error:", teamError)
     }
 
     setShowModal(false); fetchItems(searchTerm)
   }
 
-  // --- DELETE LOGIC ---
   const handleDelete = async (id) => {
       if(window.confirm("Delete Customer?")) {
           await supabase.from('master_customers').update({ is_deleted: true }).eq('id', id)
@@ -198,10 +244,25 @@ Ph: ${payload.office_phone}
       }
   }
 
-  // Helpers
+  // --- OPEN/EDIT HANDLERS ---
   const openAdd = () => { setForm(initialForm); setIsEditing(false); setActiveTab('profile'); setShowModal(true) }
+  
   const openEdit = (item) => { 
-      setForm({ ...item, contacts: item.customer_contacts || [] }); 
+      // Filter out the primary contact from the 'additional contacts' list so it doesn't duplicate in the UI
+      const secondaryContacts = item.customer_contacts 
+        ? item.customer_contacts.filter(c => !c.is_primary) 
+        : []
+
+      setForm({ 
+          ...item, 
+          // Load default contact into main fields
+          default_contact_name: item.default_contact_name,
+          default_designation: item.default_designation,
+          default_mobile: item.default_mobile,
+          default_email: item.default_email,
+          
+          contacts: secondaryContacts 
+      }); 
       setIsEditing(true); setActiveTab('profile'); setShowModal(true) 
   }
   
@@ -220,7 +281,7 @@ Ph: ${payload.office_phone}
       {/* SMART GRID */}
       <div className="table-card">
         <table className="data-table">
-          <thead><tr><th>Customer / Category</th><th>Auth. Signatory</th><th>Sales & Procurement</th><th>Status</th><th>Action</th></tr></thead>
+          <thead><tr><th>Customer / Category</th><th>Primary Contact</th><th>Additional Team</th><th>Status</th><th>Action</th></tr></thead>
           <tbody>
             {items.map(item => (
               <tr key={item.id}>
@@ -232,24 +293,18 @@ Ph: ${payload.office_phone}
                     <span style={{fontSize:'11px', color:'#64748b', marginLeft:'5px'}}>{item.city}</span>
                 </td>
                 <td>
-                    {item.contact_person}<br/>
-                    <small style={{color:'#64748b'}}>{item.designation}</small>
+                    {/* Display from Master Columns */}
+                    {item.default_contact_name}<br/>
+                    <small style={{color:'#64748b'}}>{item.default_designation}</small>
                 </td>
                 <td>
-                    {/* SMART DISPLAY LOGIC */}
-                    {item.customer_contacts && item.customer_contacts.length > 0 ? (
-                        <div>
-                            <span style={{fontWeight:'600'}}>{item.customer_contacts[0].contact_person}</span>
-                            <br/>
-                            <small style={{color:'#64748b'}}>{item.customer_contacts[0].designation}</small>
-                            {item.customer_contacts.length > 1 && (
-                                <span style={{marginLeft:'5px', fontSize:'10px', background:'#f1f5f9', padding:'1px 4px', borderRadius:'4px'}}>
-                                    +{item.customer_contacts.length - 1} more
-                                </span>
-                            )}
-                        </div>
+                    {/* Display Count of Additional Contacts */}
+                    {item.customer_contacts && item.customer_contacts.filter(c => !c.is_primary).length > 0 ? (
+                        <span style={{fontSize:'11px', background:'#f1f5f9', padding:'4px 8px', borderRadius:'4px'}}>
+                            {item.customer_contacts.filter(c => !c.is_primary).length} Additional Reps
+                        </span>
                     ) : (
-                        <span style={{color:'#94a3b8', fontStyle:'italic'}}>(Same as Primary)</span>
+                        <span style={{color:'#94a3b8', fontStyle:'italic'}}>-</span>
                     )}
                 </td>
                 <td><span className={`status-badge ${item.status==='Active'?'green':'red'}`}>{item.status}</span></td>
@@ -270,8 +325,8 @@ Ph: ${payload.office_phone}
             <div className="modal-header"><h3>{isEditing?'Edit Customer':'New Customer'}</h3><button onClick={()=>setShowModal(false)} className="btn-close">✖</button></div>
             
             <div style={{display:'flex', borderBottom:'1px solid #eee', background:'#f8fafc'}}>
-                <div onClick={()=>setActiveTab('profile')} style={tabStyle('profile')}>1. Profile & Signatory</div>
-                <div onClick={()=>setActiveTab('team')} style={tabStyle('team')}>2. Sales & Procurement</div>
+                <div onClick={()=>setActiveTab('profile')} style={tabStyle('profile')}>1. Profile & Primary Contact</div>
+                <div onClick={()=>setActiveTab('team')} style={tabStyle('team')}>2. Additional Sales Team</div>
                 <div onClick={()=>setActiveTab('finance')} style={tabStyle('finance')}>3. Financials</div>
                 <div onClick={()=>isEditing && setActiveTab('docs')} style={tabStyle('docs')}>4. Documents</div>
             </div>
@@ -300,21 +355,28 @@ Ph: ${payload.office_phone}
                    
                    <div><span className="form-label">Website</span><input value={form.website} onChange={e=>setForm({...form, website:e.target.value})} className="form-input" /></div>
 
-                   <h4 style={{gridColumn:'span 2', margin:'10px 0 0', color:'#2563eb'}}>✒️ Authorized Signatory</h4>
-                   <div><span className="form-label">Full Name</span><input value={form.contact_person} onChange={e=>setForm({...form, contact_person:e.target.value})} className="form-input" placeholder="Owner/GM Name" /></div>
+                   {/* --- PRIMARY CONTACT SECTION --- */}
+                   <h4 style={{gridColumn:'span 2', margin:'10px 0 0', color:'#2563eb'}}>✒️ Primary Contact (Authorized Signatory)</h4>
+                   
+                   <div><span className="form-label">Full Name *</span><input value={form.default_contact_name} onChange={e=>setForm({...form, default_contact_name:e.target.value})} className="form-input" placeholder="e.g. John Doe" /></div>
+                   
                    <div>
                        <span className="form-label">Designation</span>
                        <div style={{display:'flex', gap:'5px'}}>
-                           <select value={form.designation} onChange={e=>setForm({...form, designation:e.target.value})} className="form-input">
+                           <select value={form.default_designation} onChange={e=>setForm({...form, default_designation:e.target.value})} className="form-input">
                                {designations.map(d=><option key={d.id} value={d.title}>{d.title}</option>)}
                            </select>
                            <button onClick={handleAddDesignation} className="btn btn-success">+</button>
                        </div>
                    </div>
                    
-                   <h4 style={{gridColumn:'span 2', margin:'10px 0 0', color:'#2563eb'}}>📍 Address</h4>
+                   <div><span className="form-label">Direct Mobile</span><input value={form.default_mobile} onChange={e=>setForm({...form, default_mobile:e.target.value})} className="form-input" /></div>
+                   <div><span className="form-label">Direct Email</span><input value={form.default_email} onChange={e=>setForm({...form, default_email:e.target.value})} className="form-input" /></div>
+
+                   {/* --- ADDRESS SECTION --- */}
+                   <h4 style={{gridColumn:'span 2', margin:'10px 0 0', color:'#2563eb'}}>📍 Location Address</h4>
                    <div>
-                       <span className="form-label">City</span>
+                       <span className="form-label">City *</span>
                        <div style={{display:'flex', gap:'5px'}}>
                            <select value={form.city} onChange={e=>setForm({...form, city:e.target.value})} className="form-input">
                                <option value="">-- Select --</option>
@@ -325,18 +387,19 @@ Ph: ${payload.office_phone}
                    </div>
                    <div><span className="form-label">Country</span><select value={form.country} onChange={e=>setForm({...form, country:e.target.value})} className="form-input">{countries.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
                    <div><span className="form-label">PO Box</span><input value={form.po_box} onChange={e=>setForm({...form, po_box:e.target.value})} className="form-input" /></div>
-                   <div><span className="form-label">Street</span><input value={form.street} onChange={e=>setForm({...form, street:e.target.value})} className="form-input" /></div>
-                   <div><span className="form-label">Office Phone</span><input value={form.office_phone} onChange={e=>setForm({...form, office_phone:e.target.value})} className="form-input" /></div>
-                   <div><span className="form-label">Office Email</span><input value={form.office_email} onChange={e=>setForm({...form, office_email:e.target.value})} className="form-input" /></div>
+                   <div><span className="form-label">Street / Area</span><input value={form.street} onChange={e=>setForm({...form, street:e.target.value})} className="form-input" /></div>
                 </div>
               )}
 
-              {/* TAB 2: SALES TEAM */}
+              {/* TAB 2: SALES TEAM (ADDITIONAL) */}
               {activeTab === 'team' && (
                 <div>
+                    <div style={{background:'#fffbeb', border:'1px solid #fcd34d', padding:'10px', marginBottom:'15px', borderRadius:'6px', color:'#92400e'}}>
+                        ℹ️ <strong>Note:</strong> The Primary Contact (from Tab 1) is automatically added to the contact list. Use this section for <em>additional</em> staff only.
+                    </div>
                     <div style={{display:'flex', justifyContent:'space-between', marginBottom:'10px'}}>
-                        <h4>🎯 Sales & Procurement Contacts</h4>
-                        <button onClick={addTeamMember} className="btn btn-success">+ Add Contact</button>
+                        <h4>🎯 Additional Sales & Procurement Contacts</h4>
+                        <button onClick={addTeamMember} className="btn btn-success">+ Add Team Member</button>
                     </div>
                     {form.contacts.map((row, idx) => (
                         <div key={idx} style={{display:'grid', gridTemplateColumns:'1.5fr 1fr 1fr 1fr 0.2fr', gap:'5px', marginBottom:'5px'}}>
@@ -347,7 +410,7 @@ Ph: ${payload.office_phone}
                             <button onClick={()=>removeTeamMember(idx)} style={{border:'none', background:'none', color:'red', cursor:'pointer'}}>✖</button>
                         </div>
                     ))}
-                    {form.contacts.length===0 && <div style={{textAlign:'center', color:'#ccc'}}>No contacts added. (Will use Primary for proposals)</div>}
+                    {form.contacts.length===0 && <div style={{textAlign:'center', color:'#ccc', padding:'20px'}}>No additional team members added.</div>}
                 </div>
               )}
 
@@ -356,10 +419,7 @@ Ph: ${payload.office_phone}
                 <div className="form-grid">
                     <div><span className="form-label">Credit Limit (AED)</span><input type="number" value={form.credit_limit} onChange={e=>setForm({...form, credit_limit:e.target.value})} className="form-input" /></div>
                     <div><span className="form-label">TRN Number</span><input value={form.trn_number} onChange={e=>setForm({...form, trn_number:e.target.value})} className="form-input" /></div>
-                    
-                    {/* RENAMED FIELD */}
                     <div><span className="form-label">Introduced By</span><input value={form.introduced_by} onChange={e=>setForm({...form, introduced_by:e.target.value})} className="form-input" /></div>
-                    
                     <div><span className="form-label">Currency</span><input disabled value={form.currency} className="form-input" style={{background:'#eee'}} /></div>
                 </div>
               )}
