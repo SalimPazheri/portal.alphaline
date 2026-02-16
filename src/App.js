@@ -1,111 +1,65 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { supabase } from './supabaseClient'; // ✅ Auth Client
-import './App.css'; 
-import CreateProposal from './pages/CreateProposal';
-
-// Context for Popups
-import { SystemMessageProvider } from './context/SystemMessageContext';
-import Proposals from './pages/CreateProposal'
-
-
-// Components
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
-
-// Pages - Auth
-import Login from './pages/Login'; // ✅ New Login Page
-
-// Pages - Modules
 import Dashboard from './pages/Dashboard';
-import Trucks from './pages/Trucks';
-import Equipment from './pages/Equipment';
-import Customers from './pages/Customers';
-import Settings from './pages/Settings';
-import Users from './pages/Users'; // ✅ Your System Users Page
-import LogisticsParties from './pages/LogisticsParties';
-import Drivers from './pages/Drivers';
-import Commodities from './pages/Commodities';
-import Agents from './pages/Agents';
+import SuperAdminSettings from './pages/SuperAdminSettings';
+import Equipments from './pages/Equipments';
+import UserManagement from './pages/UserManagement'; // Import the new page
+import Login from './pages/Login';
+import { useUser } from './context/UserContext';
+import VerificationSuccess from './pages/VerificationSuccess';
 
 function App() {
-  const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const user = useUser();
 
-  useEffect(() => {
-    // 1. Check active session on load
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
-    })
+  // 1. General Protection: Checks if user has a role
+  const ProtectedRoute = ({ children }) => {
+    return user.role ? children : <Navigate to="/" />;
+  };
 
-    // 2. Listen for Login/Logout events
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setLoading(false)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  // --- 1. LOADING SCREEN ---
-  if (loading) {
-    return (
-      <div style={{height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f1f5f9', color:'#64748b'}}>
-        Loading Portal...
-      </div>
-    )
-  }
+  // 2. Admin Protection: Only allows Super Admin (Salim Pazheri)
+  const AdminRoute = ({ children }) => {
+    return user.role === 'Super Admin' ? children : <Navigate to="/dashboard" />;
+  };
 
   return (
-    <SystemMessageProvider>
+    <Routes>
+      <Route path="/" element={<Login />} />
       
-      {/* --- 2. IF NOT LOGGED IN -> SHOW LOGIN PAGE --- */}
-      {!session ? (
-        <Router>
-            <Routes>
-                <Route path="*" element={<Login />} />
-            </Routes>
-        </Router>
-      ) : (
-        
-        /* --- 3. IF LOGGED IN -> SHOW FULL APP --- */
-        <Router>
-          <div className="app-layout">
+      <Route 
+        path="/*" 
+        element={
+          <ProtectedRoute>
+            <div style={{ display: 'flex' }}>
+              <Sidebar />
+              <main style={{ 
+                flex: 1, 
+                marginLeft: '260px', 
+                minHeight: '100vh',
+                background: '#f8fafc' 
+              }}>
+                <Routes>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/super-settings" element={<SuperAdminSettings />} />
+                  <Route path="/equipments" element={<Equipments />} />
             
-            {/* Sidebar fixed on the left */}
-            <Sidebar />
-            
-            {/* Main Content Area */}
-            <div className="content">
-              <Routes>
-                {/* Dashboard */}
-                <Route path="/" element={<Dashboard key={session.user.id} />} />
-                
-                {/* Modules */}
-                <Route path="/trucks" element={<Trucks />} />
-                <Route path="/equipment" element={<Equipment />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route path="/drivers" element={<Drivers />}/>
-                <Route path="/logistics-parties" element={<LogisticsParties />} />
-                <Route path="/commodities" element={<Commodities />} />
-                <Route path="/agents" element={<Agents />} />
-                <Route path="/createproposal" element={<CreateProposal />} />
-
-                {/* Admin */}
-                <Route path="/users" element={<Users />} />
-                <Route path="/settings" element={<Settings />} />
-                
-                {/* Fallback for unknown URLs */}
-                <Route path="*" element={<Navigate to="/" />} />
-                <Route path="/proposals" element={<Proposals />} />
-            <Route path="/create-proposal" element={<CreateProposal />} />
-              </Routes>
+<Route path="/verified" element={<VerificationSuccess />} />    
+                  {/* 3. EXCLUSIVE ACCESS: Only Super Admin can see this */}
+                  <Route 
+                    path="/user-management" 
+                    element={
+                      <AdminRoute>
+                        <UserManagement />
+                      </AdminRoute>
+                    } 
+                  />
+                  
+                </Routes>
+              </main>
             </div>
-            
-          </div>
-        </Router>
-      )}
-    </SystemMessageProvider>
+          </ProtectedRoute>
+        } 
+      />
+    </Routes>
   );
 }
 

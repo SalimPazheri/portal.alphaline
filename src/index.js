@@ -1,14 +1,18 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { SystemMessageProvider } from './context/SystemMessageContext'; // <--- Import this
+import './index.css'; 
+import { BrowserRouter } from 'react-router-dom';
+import { UserProvider } from './context/UserContext'; 
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
+
 root.render(
   <React.StrictMode>
-    {/* Wrap the WHOLE App here so everything can access it */}
-    <SystemMessageProvider>
-      <App />
-    </SystemMessageProvider>
+    <BrowserRouter>
+      <UserProvider>
+        <App />
+      </UserProvider>
+    </BrowserRouter>
   </React.StrictMode>
 );

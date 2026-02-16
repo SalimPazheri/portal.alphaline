@@ -342,3 +342,25 @@
     background: white; display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 8px;
   }
+  // Add this CSS to your App.css for the input icons
+
+.input-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: white;
+  transition: border-color 0.2s;
+}
+.input-group:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { 100% { transform: rotate(360deg); } }
+@media (max-width: 768px) {
+  .hidden-mobile { display: none !important; }
+}

@@ -1,181 +1,168 @@
-
-import React, { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
+import { useUser } from '../context/UserContext'
+import { Save, Image as ImageIcon, MessageSquare, Globe, Loader2 } from 'lucide-react'
 
 export default function Settings() {
+  const user = useUser() // Accesses your ALPHALINE CARGO branch info
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   
-  // This state holds our global config
-  // We include app_name, file settings, and regional defaults
-  const [config, setConfig] = useState({
-    app_name: 'Move+', 
-    max_file_size_mb: 5,
-    allowed_file_types: '',
-    default_country: '',
-    default_currency: '',
-    vat_percentage: 0
+  const [branchData, setBranchData] = useState({
+    name: '',
+    vat_percent: 0,
+    currency_code: '',
+    seasonal_message: '',
+    show_seasonal_message: false,
+    header_image_url: '',
+    footer_image_url: ''
   })
 
-  // Mock Admin Check (Set to 'false' to test the restricted view)
-  const isAdmin = true 
-
   useEffect(() => {
-    fetchSettings()
-  }, [])
+    if (!user.loading) {
+      fetchSettings()
+    }
+  }, [user.loading, user.branch_id])
 
   const fetchSettings = async () => {
     try {
-      setLoading(true)
-      // We always fetch ID=1 because it's a singleton table (one row only)
-      let { data, error } = await supabase.from('system_settings').select('*').eq('id', 1).single()
-      
-      // Ignore error if row doesn't exist yet (it will be created on save)
-      if (error && error.code !== 'PGRST116') {
-        alert("Error fetching settings: " + error.message)
-      }
-      
+      if (!user.branch_id) return
+
+      const { data, error } = await supabase
+        .from('branch_document_settings')
+        .select(`
+          seasonal_message, 
+          show_seasonal_message, 
+          header_image_url, 
+          footer_image_url,
+          branch:branch_id ( name, vat_percent, currency_code )
+        `)
+        .eq('branch_id', user.branch_id)
+        .maybeSingle() // Prevents "Loading..." hang if row is missing
+
       if (data) {
-        setConfig(data)
+        setBranchData({
+          name: data.branch?.name || '',
+          vat_percent: data.branch?.vat_percent || 0,
+          currency_code: data.branch?.currency_code || '',
+          seasonal_message: data.seasonal_message || '',
+          show_seasonal_message: data.show_seasonal_message || false,
+          header_image_url: data.header_image_url || '',
+          footer_image_url: data.footer_image_url || ''
+        })
       }
-    } catch (e) {
-      console.error(e)
+    } catch (err) {
+      console.error("Error loading settings:", err)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSave = async (e) => {
-    e.preventDefault()
+  const handleSave = async () => {
     setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('branch_document_settings')
+        .upsert({
+          branch_id: user.branch_id,
+          seasonal_message: branchData.seasonal_message,
+          show_seasonal_message: branchData.show_seasonal_message,
+          header_image_url: branchData.header_image_url,
+          footer_image_url: branchData.footer_image_url
+        })
 
-    // UPSERT: Updates existing row ID=1, or inserts if missing
-    const { error } = await supabase
-      .from('system_settings')
-      .upsert({ ...config, id: 1 }) 
-
-    if (error) alert("Failed to save: " + error.message)
-    else alert("✅ System Settings Updated!")
-    
-    setSaving(false)
+      if (error) throw error
+      alert("Settings saved successfully!")
+    } catch (err) {
+      alert("Save failed: " + err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
-  if (!isAdmin) {
-    return <div style={{padding:'50px', color:'red', textAlign:'center'}}>⛔ Access Denied: Admins Only.</div>
-  }
-
-  if (loading) return <div style={{padding:'40px', textAlign:'center', color:'#666'}}>Loading System Config...</div>
+  if (loading) return (
+    <div style={{ display: 'flex', gap: '10px', padding: '40px', color: '#64748b' }}>
+      <Loader2 className="animate-spin" /> Initializing Branch Settings...
+    </div>
+  )
 
   return (
-    <div className="page-container">
-      <div className="header-row">
-        <h2 style={{margin:0}}>⚙️ System Settings</h2>
+    <div style={{ maxWidth: '1000px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '30px' }}>
+        <div>
+          <h2 style={{ margin: 0, color: '#0f172a' }}>Branch Settings</h2>
+          <p style={{ color: '#64748b', margin: '5px 0 0' }}>Manage branding for {branchData.name}</p>
+        </div>
+        <button onClick={handleSave} disabled={saving} style={btnStyle}>
+          {saving ? 'Saving...' : 'Save Settings'} <Save size={18} />
+        </button>
       </div>
 
-      <div className="table-card" style={{maxWidth:'600px', margin:'20px auto', padding:'30px'}}>
-        <form onSubmit={handleSave}>
-            
-            {/* SECTION 1: APPLICATION IDENTITY (New) */}
-            <h4 style={{marginTop:0, color:'#2563eb', borderBottom:'2px solid #f1f5f9', paddingBottom:'10px'}}>
-                🆔 Application Identity
-            </h4>
-            
-            <div className="form-group" style={{marginBottom:'20px'}}>
-                <label className="form-label">Application Name (Header)</label>
-                <input 
-                    type="text" 
-                    className="form-input"
-                    value={config.app_name || ''}
-                    onChange={e => setConfig({...config, app_name: e.target.value})}
-                    placeholder="e.g. Move+"
-                    style={{fontWeight:'bold', color:'#333'}}
-                />
-                <small style={{color:'#64748b', display:'block', marginTop:'5px'}}>
-                    This name appears on all system popups and alerts.
-                </small>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '25px' }}>
+        
+        {/* READ ONLY INFO */}
+        <div style={cardStyle}>
+          <h3 style={cardTitle}><Globe size={18} /> Official Info</h3>
+          <div style={infoRow}><span>Branch Name:</span> <strong>{branchData.name}</strong></div>
+          <div style={infoRow}><span>VAT Rate:</span> <strong>{branchData.vat_percent}%</strong></div>
+          <div style={infoRow}><span>Currency:</span> <strong>{branchData.currency_code}</strong></div>
+          <p style={{fontSize: '11px', color: '#94a3b8', marginTop: '15px'}}>Contact Super Admin to change official branch details.</p>
+        </div>
+
+        {/* SEASONAL MESSAGE */}
+        <div style={cardStyle}>
+          <h3 style={cardTitle}><MessageSquare size={18} /> Seasonal Greeting</h3>
+          <textarea 
+            placeholder="e.g. Ramadan Kareem or Holiday Hours..."
+            value={branchData.seasonal_message}
+            onChange={e => setBranchData({...branchData, seasonal_message: e.target.value})}
+            style={textareaStyle}
+          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px', cursor: 'pointer', fontSize: '14px' }}>
+            <input 
+              type="checkbox" 
+              checked={branchData.show_seasonal_message}
+              onChange={e => setBranchData({...branchData, show_seasonal_message: e.target.checked})}
+            /> 
+            Display message on generated PDF documents
+          </label>
+        </div>
+
+        {/* BRANDING */}
+        <div style={{ ...cardStyle, gridColumn: 'span 2' }}>
+          <h3 style={cardTitle}><ImageIcon size={18} /> Document Letterhead & Footer (URLs)</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div>
+              <label style={labelStyle}>Header Image URL</label>
+              <input 
+                value={branchData.header_image_url}
+                onChange={e => setBranchData({...branchData, header_image_url: e.target.value})}
+                placeholder="https://..."
+                style={inputStyle} 
+              />
             </div>
-
-            {/* SECTION 2: FILE UPLOAD CONTROLS */}
-            <h4 style={{marginTop:'30px', color:'#2563eb', borderBottom:'2px solid #f1f5f9', paddingBottom:'10px'}}>
-                📂 File Upload Restrictions
-            </h4>
-            
-            <div className="form-group" style={{marginBottom:'15px'}}>
-                <label className="form-label">Max File Size (MB)</label>
-                <input 
-                    type="number" 
-                    className="form-input"
-                    value={config.max_file_size_mb || 5}
-                    onChange={e => setConfig({...config, max_file_size_mb: e.target.value})}
-                />
-                <small style={{color:'#64748b'}}>Files larger than this will be rejected.</small>
+            <div>
+              <label style={labelStyle}>Footer Image URL</label>
+              <input 
+                value={branchData.footer_image_url}
+                onChange={e => setBranchData({...branchData, footer_image_url: e.target.value})}
+                placeholder="https://..."
+                style={inputStyle} 
+              />
             </div>
+          </div>
+        </div>
 
-            <div className="form-group" style={{marginBottom:'15px'}}>
-                <label className="form-label">Allowed File Types</label>
-                <textarea 
-                    className="form-input"
-                    rows="3"
-                    value={config.allowed_file_types || ''}
-                    onChange={e => setConfig({...config, allowed_file_types: e.target.value})}
-                    placeholder="image/jpeg, image/png, application/pdf"
-                />
-                <small style={{color:'#64748b'}}>Comma separated MIME types.</small>
-            </div>
-
-
-            {/* SECTION 3: REGIONAL DEFAULTS */}
-            <h4 style={{marginTop:'30px', color:'#2563eb', borderBottom:'2px solid #f1f5f9', paddingBottom:'10px'}}>
-                🌍 Regional & Financial Defaults
-            </h4>
-
-            <div className="form-group" style={{marginBottom:'15px'}}>
-                <label className="form-label">Default Country</label>
-                <input 
-                    type="text" 
-                    className="form-input"
-                    value={config.default_country || ''}
-                    onChange={e => setConfig({...config, default_country: e.target.value})}
-                    placeholder="e.g. Bahrain"
-                />
-            </div>
-
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
-                <div className="form-group">
-                    <label className="form-label">Default Currency</label>
-                    <input 
-                        type="text" 
-                        className="form-input"
-                        value={config.default_currency || ''}
-                        onChange={e => setConfig({...config, default_currency: e.target.value})}
-                        placeholder="e.g. BHD"
-                    />
-                </div>
-                
-                <div className="form-group">
-                    <label className="form-label">VAT %</label>
-                    <input 
-                        type="number" 
-                        className="form-input"
-                        value={config.vat_percentage || 0}
-                        onChange={e => setConfig({...config, vat_percentage: e.target.value})}
-                    />
-                </div>
-            </div>
-
-            <hr style={{margin:'30px 0', borderTop:'1px solid #eee'}} />
-
-            <button 
-                type="submit" 
-                className="btn btn-primary" 
-                style={{width:'100%', padding:'12px', fontSize:'16px'}}
-                disabled={saving}
-            >
-                {saving ? 'Saving...' : '💾 Update System Settings'}
-            </button>
-
-        </form>
       </div>
     </div>
   )
 }
+
+// Styles
+const cardStyle = { background: 'white', padding: '25px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+const cardTitle = { fontSize: '16px', fontWeight: '700', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }
+const infoRow = { display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px dashed #f1f5f9', fontSize: '14px' }
+const labelStyle = { display: 'block', fontSize: '13px', fontWeight: '600', color: '#475569', marginBottom: '8px' }
+const inputStyle = { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px' }
+const textareaStyle = { width: '100%', height: '80px', padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px', resize: 'none' }
+const btnStyle = { background: '#2563eb', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold' }

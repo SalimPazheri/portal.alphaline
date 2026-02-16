@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 import DocumentManager from '../components/DocumentManager'
+import { Plus, Search, Edit2, Trash2, X, Save, User, MapPin, Briefcase, DollarSign } from 'lucide-react'
 
-// 🔑 REPLACE WITH YOUR KEY
 const GOOGLE_API_KEY = 'AIzaSyAZUXRQEb1TYiAm4t3IrHS25QGug6oXi1I'; 
 
 const currencyMap = {
@@ -15,47 +15,39 @@ export default function Customers() {
   const [items, setItems] = useState([])
   const [countries, setCountries] = useState([])
   const [cities, setCities] = useState([])
+  
   const [designations, setDesignations] = useState([])
   const [categories, setCategories] = useState([]) 
+  
   const [searchTerm, setSearchTerm] = useState('') 
   const [showModal, setShowModal] = useState(false)
   const [activeTab, setActiveTab] = useState('profile')
   const [isEditing, setIsEditing] = useState(false)
 
-  // Google Maps Refs
   const googleSearchRef = useRef(null)
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false)
 
-  // --- INITIAL FORM STATE ---
   const initialForm = {
     id: null,
     name: '',
-    category: '', 
-    
-    // Address Parts (Pure Location now)
-    po_box: '', street: '', city: '', country: 'United Arab Emirates',
-    
-    // Primary Contact (The "Default" one)
-    default_contact_name: '',       // Mapped to DB: default_contact_name
-    default_designation: 'General Manager', // Mapped to DB: default_designation
-    default_mobile: '',             // Mapped to DB: default_mobile
-    default_email: '',              // Mapped to DB: default_email
-    
+    category_id: '', 
+    po_box: '', street: '', city: '', country: 'Bahrain', address: '',
+    default_contact_name: '',       
+    default_designation_id: '', 
+    default_mobile: '',             
+    default_email: '',              
     website: '',
-
-    // Financials
     credit_limit: 5000, 
-    currency: 'AED', 
-    trn_number: '', 
+    currency: 'BHD', 
+    payment_terms: '30 Days',
+    vat_number: '', 
+    cr_number: '', 
     introduced_by: '', 
     status: 'Active',
-    
-    // Additional Sales Team
     contacts: [] 
   }
   const [form, setForm] = useState(initialForm)
 
-  // --- 1. LOAD DATA ---
   useEffect(() => {
     if (!window.google) {
       const script = document.createElement('script')
@@ -65,10 +57,13 @@ export default function Customers() {
       document.body.appendChild(script)
     } else { setIsGoogleLoaded(true) }
     
-    fetchItems(); fetchCountries(); fetchDesignations(); fetchCategories() 
+    fetchItems()
+    fetchCountries() 
+    fetchDesignations() 
+    fetchCategories()
+    determineDefaultCurrency() 
   }, [])
 
-  // --- 2. GOOGLE AUTOCOMPLETE ---
   useEffect(() => {
     if (isGoogleLoaded && showModal && activeTab === 'profile' && googleSearchRef.current) {
       const autocomplete = new window.google.maps.places.Autocomplete(googleSearchRef.current, {
@@ -88,7 +83,7 @@ export default function Customers() {
         setForm(prev => ({
           ...prev, name: place.name, street: street, city: city, country: country,
           default_mobile: place.formatted_phone_number || '', website: place.website || '',
-          default_contact_name: 'Manager'
+          default_contact_name: 'Mr.'
         }))
       })
     }
@@ -97,9 +92,14 @@ export default function Customers() {
   // --- DATA FETCHING ---
   const fetchItems = async (search = '') => {
     try {
-      // We fetch everything, including the sub-table contacts
+      // ✅ FIXED: Changed 'designation(name)' to 'designation(title)' to match DB
       let query = supabase.from('master_customers')
-        .select('*, customer_contacts(*)')
+        .select(`
+            *, 
+            customer_contacts(*),
+            designation:default_designation_id(title), 
+            category_details:category_id(title)
+        `)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false })
       
@@ -110,35 +110,111 @@ export default function Customers() {
     } catch (error) { console.error(error) }
   }
   
-  const fetchCountries = async () => { const { data } = await supabase.from('master_countries').select('name').order('name'); if(data) setCountries(data) }
-  const fetchCities = async (country) => { const { data } = await supabase.from('master_cities').select('name').eq('country_name', country).order('name'); setCities(data || []) }
-  const fetchDesignations = async () => { const { data } = await supabase.from('master_designations').select('title').order('title'); setDesignations(data || []) }
-  const fetchCategories = async () => { const { data } = await supabase.from('master_categories').select('title').order('title'); setCategories(data || []) }
+  const determineDefaultCurrency = async () => {
+    const userSessionCurrency = localStorage.getItem('user_currency')
+    if (userSessionCurrency) {
+        setForm(prev => ({ ...prev, currency: userSessionCurrency }))
+        return
+    }
+    const { data } = await supabase.from('global_settings').select('setting_value').eq('setting_key', 'default_currency').single()
+    if (data) setForm(prev => ({ ...prev, currency: data.setting_value }))
+  }
+
+  // Master Lists
+  // ✅ FIXED: We need the ID of the country now, not just the name
+  const fetchCountries = async () => { 
+    const { data } = await supabase
+        .from('master_countries')
+        .select('id, name')
+        .order('name'); 
+    
+    if(data && data.length > 0) {
+        setCountries(data);
+        
+        // ✨ THE FIX: Check if our current default 'Bahrain' is actually in the list
+        // If not, automatically switch to the first country found (e.g., UAE)
+        const currentIsValid = data.some(c => c.name === form.country);
+        if (!currentIsValid) {
+             setForm(prev => ({ ...prev, country: data[0].name }));
+        }
+    }
+  }
+  
+  const fetchCities = async (countryName) => { 
+     // We have to find the country ID based on the name selected in the dropdown
+     const countryObj = countries.find(c => c.name === countryName);
+     if(!countryObj) return;
+
+     // ✅ FIXED: Use country_id (UUID) to find cities
+     const { data } = await supabase.from('master_cities')
+       .select('name')
+       .eq('country_id', countryObj.id) 
+       .order('name'); 
+     setCities(data || []) 
+  }
+  
+  const fetchDesignations = async () => { const { data } = await supabase.from('master_designations').select('*').order('title'); setDesignations(data || []) }
+  const fetchCategories = async () => { const { data } = await supabase.from('master_categories').select('*').order('title'); setCategories(data || []) }
 
   useEffect(() => { 
-      if(form.country) {
+      if(form.country && countries.length > 0) {
           fetchCities(form.country)
-          const currency = currencyMap[form.country] || 'USD'
-          setForm(prev => ({ ...prev, currency: currency }))
+          if(!form.currency) {
+             const currency = currencyMap[form.country] || 'USD'
+             setForm(prev => ({ ...prev, currency: currency }))
+          }
       }
-  }, [form.country])
+  }, [form.country, countries]) // Added countries dependency
 
   // --- SMART ADDERS ---
   const handleAddCity = async () => {
-      const val = prompt("New City Name:"); if(!val) return
-      await supabase.from('master_cities').insert([{ country_name: form.country, name: val }])
-      fetchCities(form.country); setForm(p => ({...p, city: val}))
-  }
+    const val = prompt("New City Name:"); 
+    if(!val) return
+
+    // 1. LOOKUP: Find the full object (ID + Name) from your list
+    const selectedCountryObj = countries.find(c => c.name === form.country);
+
+    // 2. SAFETY CHECK: Did we find it?
+    if (!selectedCountryObj) {
+        alert(`Error: Could not find ID for country '${form.country}'. Please select a country again.`);
+        return;
+    }
+
+    // 3. INSERT: Use the found ID (selectedCountryObj.id)
+    const { error } = await supabase
+        .from('master_cities')
+        .insert([{ 
+            country_id: selectedCountryObj.id, // ✅ This sends the UUID
+            name: val 
+        }]);
+    
+    if(error) {
+        alert("Error adding city: " + error.message);
+    } else {
+        // Refresh the city list
+        fetchCities(form.country); 
+        setForm(p => ({...p, city: val}));
+    }
+}
+  
   const handleAddDesignation = async () => {
       const val = prompt("New Designation:"); if(!val) return
-      await supabase.from('master_designations').insert([{ title: val }])
-      fetchDesignations(); setForm(p => ({...p, default_designation: val}))
+      const { data, error } = await supabase.from('master_designations').insert([{ title: val }]).select().single()
+      if(error) alert(error.message)
+      else { 
+          await fetchDesignations(); 
+          setForm(p => ({...p, default_designation_id: data.id})) 
+      }
   }
+  
   const handleAddCategory = async () => {
       const val = prompt("New Category Name:"); if(!val) return
-      const { error } = await supabase.from('master_categories').insert([{ title: val }])
+      const { data, error } = await supabase.from('master_categories').insert([{ title: val }]).select().single()
       if(error) alert(error.message)
-      else { await fetchCategories(); setForm(p => ({...p, category: val})) }
+      else { 
+          await fetchCategories(); 
+          setForm(p => ({...p, category_id: data.id})) 
+      }
   }
 
   // --- TEAM MANAGEMENT ---
@@ -146,49 +222,49 @@ export default function Customers() {
   const removeTeamMember = (idx) => { const c = [...form.contacts]; c.splice(idx, 1); setForm(p => ({ ...p, contacts: c })) }
   const updateTeamMember = (idx, field, val) => { const c = [...form.contacts]; c[idx][field] = val; setForm(p => ({ ...p, contacts: c })) }
 
-  // --- 💾 SAVE LOGIC (THE FIX) ---
+  // --- 💾 SAVE LOGIC ---
   const handleSave = async () => {
     const payload = { ...form }
     
-    // 1. Validation
     if(payload.name.length < 3) return alert("❌ Name too short!")
-    if(!payload.category) return alert("❌ Please select a Category.")
-    if(!payload.city) return alert("❌ Please select a City.")
+    if(!payload.category_id) return alert("❌ Please select a Category.")
     if(!payload.default_contact_name) return alert("❌ Primary Contact Name is required.")
 
-    // 2. Fix Address: PURE Location only (No names here!)
-    // This solves your issue of "Primary contact saved in address field"
     payload.address = `
 ${payload.po_box ? 'PO Box: ' + payload.po_box : ''} 
 ${payload.street || ''}
-${payload.city}, ${payload.country}
+${payload.city || ''}, ${payload.country || ''}
     `.trim()
 
-    // 3. Clean Payload for Master Table
+    // 3. Clean Payload
     const masterPayload = {
         name: payload.name,
-        category: payload.category,
+        // ✅ FIXED: Convert empty string '' to null, or Postgres crashes on UUID
+        category_id: payload.category_id || null, 
+        
         city: payload.city,
         country: payload.country,
-        address: payload.address, // Clean address
+        address: payload.address, 
         po_box: payload.po_box,
         street: payload.street,
         
-        // Save Default Contact Columns Explicitly
         default_contact_name: payload.default_contact_name,
-        default_designation: payload.default_designation,
+        // ✅ FIXED: Convert empty string '' to null
+        default_designation_id: payload.default_designation_id || null, 
+        
         default_mobile: payload.default_mobile,
         default_email: payload.default_email,
 
         website: payload.website,
         credit_limit: payload.credit_limit,
         currency: payload.currency,
-        trn_number: payload.trn_number,
+        vat_number: payload.vat_number, 
+        cr_number: payload.cr_number,
         introduced_by: payload.introduced_by,
-        status: payload.status
+        status: payload.status,
+        payment_terms: payload.payment_terms
     }
 
-    // 4. Insert/Update Master Customer
     let { data, error } = isEditing 
         ? await supabase.from('master_customers').update(masterPayload).eq('id', form.id).select()
         : await supabase.from('master_customers').insert([masterPayload]).select()
@@ -196,23 +272,20 @@ ${payload.city}, ${payload.country}
     if(error) return alert("Error: " + error.message)
     const customerId = data[0].id
 
-    // 5. HANDLE CONTACTS (THE COPY LOGIC)
-    // We delete all old contacts for this customer to ensure a clean slate
+    // 5. HANDLE CONTACTS
     await supabase.from('customer_contacts').delete().eq('customer_id', customerId)
 
     const allContacts = []
 
-    // A. Add the PRIMARY Contact (Copied from Master)
     allContacts.push({
         customer_id: customerId,
         contact_person: payload.default_contact_name,
-        designation: payload.default_designation,
+        designation: 'Primary', 
         mobile: payload.default_mobile,
         email: payload.default_email,
-        is_primary: true // Mark as Primary
+        is_primary: true
     })
 
-    // B. Add the Additional Sales Team
     if (form.contacts && form.contacts.length > 0) {
         form.contacts.forEach(c => {
             if (c.contact_person) {
@@ -228,10 +301,8 @@ ${payload.city}, ${payload.country}
         })
     }
 
-    // C. Save All to Table 2
     if(allContacts.length > 0) {
-        const { error: teamError } = await supabase.from('customer_contacts').insert(allContacts)
-        if (teamError) console.error("Team Save Error:", teamError)
+        await supabase.from('customer_contacts').insert(allContacts)
     }
 
     setShowModal(false); fetchItems(searchTerm)
@@ -244,20 +315,18 @@ ${payload.city}, ${payload.country}
       }
   }
 
-  // --- OPEN/EDIT HANDLERS ---
   const openAdd = () => { setForm(initialForm); setIsEditing(false); setActiveTab('profile'); setShowModal(true) }
   
   const openEdit = (item) => { 
-      // Filter out the primary contact from the 'additional contacts' list so it doesn't duplicate in the UI
-      const secondaryContacts = item.customer_contacts 
-        ? item.customer_contacts.filter(c => !c.is_primary) 
-        : []
+      const secondaryContacts = item.customer_contacts ? item.customer_contacts.filter(c => !c.is_primary) : []
 
       setForm({ 
           ...item, 
-          // Load default contact into main fields
+          // ✅ Ensure UUIDs are strings, not nulls, for the form inputs
+          category_id: item.category_id || '',
+          default_designation_id: item.default_designation_id || '',
+          
           default_contact_name: item.default_contact_name,
-          default_designation: item.default_designation,
           default_mobile: item.default_mobile,
           default_email: item.default_email,
           
@@ -278,7 +347,6 @@ ${payload.city}, ${payload.country}
         </div>
       </div>
 
-      {/* SMART GRID */}
       <div className="table-card">
         <table className="data-table">
           <thead><tr><th>Customer / Category</th><th>Primary Contact</th><th>Additional Team</th><th>Status</th><th>Action</th></tr></thead>
@@ -287,18 +355,18 @@ ${payload.city}, ${payload.country}
               <tr key={item.id}>
                 <td>
                     <strong>{item.name}</strong><br/>
+                    {/* ✅ FIXED: Use 'title' which we fetched in join */}
                     <span style={{fontSize:'10px', background:'#e0f2fe', color:'#0369a1', padding:'2px 6px', borderRadius:'4px'}}>
-                        {item.category || 'Uncategorized'}
+                        {item.category_details?.title || 'Uncategorized'}
                     </span>
                     <span style={{fontSize:'11px', color:'#64748b', marginLeft:'5px'}}>{item.city}</span>
                 </td>
                 <td>
-                    {/* Display from Master Columns */}
                     {item.default_contact_name}<br/>
-                    <small style={{color:'#64748b'}}>{item.default_designation}</small>
+                    {/* ✅ FIXED: Use 'title' from designation join */}
+                    <small style={{color:'#64748b'}}>{item.designation?.title || '-'}</small>
                 </td>
                 <td>
-                    {/* Display Count of Additional Contacts */}
                     {item.customer_contacts && item.customer_contacts.filter(c => !c.is_primary).length > 0 ? (
                         <span style={{fontSize:'11px', background:'#f1f5f9', padding:'4px 8px', borderRadius:'4px'}}>
                             {item.customer_contacts.filter(c => !c.is_primary).length} Additional Reps
@@ -318,7 +386,6 @@ ${payload.city}, ${payload.country}
         </table>
       </div>
 
-      {/* MODAL */}
       {showModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{width:'900px', height:'auto'}}>
@@ -332,7 +399,6 @@ ${payload.city}, ${payload.country}
             </div>
 
             <div className="modal-body">
-              {/* TAB 1: SMART PROFILE */}
               {activeTab === 'profile' && (
                 <div className="form-grid">
                    <div style={{gridColumn:'span 2', background:'#eff6ff', padding:'10px', borderRadius:'8px', marginBottom:'10px'}}>
@@ -345,9 +411,10 @@ ${payload.city}, ${payload.country}
                    <div>
                        <span className="form-label">Business Category *</span>
                        <div style={{display:'flex', gap:'5px'}}>
-                           <select value={form.category} onChange={e=>setForm({...form, category:e.target.value})} className="form-input">
+                           <select value={form.category_id} onChange={e=>setForm({...form, category_id:e.target.value})} className="form-input">
                                <option value="">-- Select Category --</option>
-                               {categories.map(c=><option key={c.id} value={c.title}>{c.title}</option>)}
+                               {/* ✅ FIXED: Use 'title' for display */}
+                               {categories.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}
                            </select>
                            <button onClick={handleAddCategory} className="btn btn-success">+</button>
                        </div>
@@ -355,7 +422,6 @@ ${payload.city}, ${payload.country}
                    
                    <div><span className="form-label">Website</span><input value={form.website} onChange={e=>setForm({...form, website:e.target.value})} className="form-input" /></div>
 
-                   {/* --- PRIMARY CONTACT SECTION --- */}
                    <h4 style={{gridColumn:'span 2', margin:'10px 0 0', color:'#2563eb'}}>✒️ Primary Contact (Authorized Signatory)</h4>
                    
                    <div><span className="form-label">Full Name *</span><input value={form.default_contact_name} onChange={e=>setForm({...form, default_contact_name:e.target.value})} className="form-input" placeholder="e.g. John Doe" /></div>
@@ -363,8 +429,10 @@ ${payload.city}, ${payload.country}
                    <div>
                        <span className="form-label">Designation</span>
                        <div style={{display:'flex', gap:'5px'}}>
-                           <select value={form.default_designation} onChange={e=>setForm({...form, default_designation:e.target.value})} className="form-input">
-                               {designations.map(d=><option key={d.id} value={d.title}>{d.title}</option>)}
+                           <select value={form.default_designation_id} onChange={e=>setForm({...form, default_designation_id:e.target.value})} className="form-input">
+                               <option value="">-- Select --</option>
+                               {/* ✅ FIXED: Use 'title' for display */}
+                               {designations.map(d=><option key={d.id} value={d.id}>{d.title}</option>)}
                            </select>
                            <button onClick={handleAddDesignation} className="btn btn-success">+</button>
                        </div>
@@ -373,14 +441,13 @@ ${payload.city}, ${payload.country}
                    <div><span className="form-label">Direct Mobile</span><input value={form.default_mobile} onChange={e=>setForm({...form, default_mobile:e.target.value})} className="form-input" /></div>
                    <div><span className="form-label">Direct Email</span><input value={form.default_email} onChange={e=>setForm({...form, default_email:e.target.value})} className="form-input" /></div>
 
-                   {/* --- ADDRESS SECTION --- */}
                    <h4 style={{gridColumn:'span 2', margin:'10px 0 0', color:'#2563eb'}}>📍 Location Address</h4>
                    <div>
                        <span className="form-label">City *</span>
                        <div style={{display:'flex', gap:'5px'}}>
                            <select value={form.city} onChange={e=>setForm({...form, city:e.target.value})} className="form-input">
                                <option value="">-- Select --</option>
-                               {cities.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                               {cities.map(c=><option key={c.name} value={c.name}>{c.name}</option>)}
                            </select>
                            <button onClick={handleAddCity} className="btn btn-success">+</button>
                        </div>
@@ -391,7 +458,6 @@ ${payload.city}, ${payload.country}
                 </div>
               )}
 
-              {/* TAB 2: SALES TEAM (ADDITIONAL) */}
               {activeTab === 'team' && (
                 <div>
                     <div style={{background:'#fffbeb', border:'1px solid #fcd34d', padding:'10px', marginBottom:'15px', borderRadius:'6px', color:'#92400e'}}>
@@ -414,17 +480,17 @@ ${payload.city}, ${payload.country}
                 </div>
               )}
 
-              {/* TAB 3: FINANCIALS */}
               {activeTab === 'finance' && (
                 <div className="form-grid">
                     <div><span className="form-label">Credit Limit (AED)</span><input type="number" value={form.credit_limit} onChange={e=>setForm({...form, credit_limit:e.target.value})} className="form-input" /></div>
-                    <div><span className="form-label">TRN Number</span><input value={form.trn_number} onChange={e=>setForm({...form, trn_number:e.target.value})} className="form-input" /></div>
+                    <div><span className="form-label">Payment Terms</span><input value={form.payment_terms} onChange={e=>setForm({...form, payment_terms:e.target.value})} className="form-input" /></div>
+                    <div><span className="form-label">VAT / TRN Number</span><input value={form.vat_number} onChange={e=>setForm({...form, vat_number:e.target.value})} className="form-input" /></div>
+                    <div><span className="form-label">CR Number</span><input value={form.cr_number} onChange={e=>setForm({...form, cr_number:e.target.value})} className="form-input" /></div>
                     <div><span className="form-label">Introduced By</span><input value={form.introduced_by} onChange={e=>setForm({...form, introduced_by:e.target.value})} className="form-input" /></div>
                     <div><span className="form-label">Currency</span><input disabled value={form.currency} className="form-input" style={{background:'#eee'}} /></div>
                 </div>
               )}
 
-              {/* TAB 4: DOCUMENTS */}
               {activeTab === 'docs' && <DocumentManager relatedType="Customer" relatedId={form.id} />}
             </div>
 
